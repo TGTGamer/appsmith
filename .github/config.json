@@ -19,12 +19,12 @@
       "prereleaseName": "alpha",
       "issue": {
         "labels": {
-          "Actions": {
+          "documentation": {
             "requires": 1,
             "conditions": [
               {
                 "type": "hasLabel",
-                "label": "Datasources",
+                "label": "bug",
                 "value": true
               }
             ]
