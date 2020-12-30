@@ -1,6 +1,6 @@
 on:
   issues:
-    types: []
+    types: [labeled]
 
 jobs:
   run:
