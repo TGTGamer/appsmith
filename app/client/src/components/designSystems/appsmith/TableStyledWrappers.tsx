@@ -21,26 +21,20 @@ export const TableWrapper = styled.div<{
   .tableWrap {
     height: 100%;
     display: block;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: auto;
   }
   .table {
     border-spacing: 0;
     color: ${Colors.THUNDER};
     position: relative;
     background: ${Colors.ATHENS_GRAY_DARKER};
+    display: table;
+    width: 100%;
     .thead,
     .tbody {
       overflow: hidden;
     }
     .tbody {
-      overflow-y: scroll;
-      /* Subtracting 9px to handling widget padding */
-      height: ${props =>
-        props.height -
-        props.tableSizes.TABLE_HEADER_HEIGHT -
-        props.tableSizes.COLUMN_HEADER_HEIGHT -
-        9}px;
       .tr {
         width: 100%;
       }
@@ -102,6 +96,11 @@ export const TableWrapper = styled.div<{
       line-height: ${props => props.tableSizes.ROW_HEIGHT}px;
       padding: 0 10px;
     }
+    .thead {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
   }
   .draggable-header,
   .hidden-header {
@@ -158,7 +157,10 @@ export const DropDownWrapper = styled.div`
   box-shadow: 0px 2px 4px rgba(67, 70, 74, 0.14);
 `;
 
-export const OptionWrapper = styled.div<{ selected: boolean }>`
+export const OptionWrapper = styled.div<{
+  selected: boolean;
+  isHeader?: boolean;
+}>`
   display: flex;
   width: 100%;
   justify-content: space-between;
@@ -168,7 +170,7 @@ export const OptionWrapper = styled.div<{ selected: boolean }>`
   color: ${props => (props.selected ? Colors.WHITE : Colors.OXFORD_BLUE)};
   font-size: 14px;
   min-width: 200px;
-  cursor: pointer;
+  cursor: ${props => (!props.isHeader ? "pointer" : "default")};
   border-radius: 4px;
   margin: 3px 0;
   background: ${props => (props.selected ? Colors.GREEN : Colors.WHITE)};
@@ -179,8 +181,8 @@ export const OptionWrapper = styled.div<{ selected: boolean }>`
     width: 100%;
   }
   &.non-selectable {
-    color: ${Colors.GRAY};
-    pointer-events: none;
+    background: ${props =>
+      !props.isHeader ? Colors.WHITE_SMOKE : Colors.WHITE_CLOUD};
   }
 `;
 
@@ -291,7 +293,7 @@ export const TableHeaderWrapper = styled.div<{
   .show-page-items {
     display: ${props => (props.width < 700 ? "none" : "flex")};
   }
-  overflow-x: scroll;
+  overflow-x: auto;
   overflow-y: hidden;
   height: ${props => props.tableSizes.TABLE_HEADER_HEIGHT}px;
   min-height: ${props => props.tableSizes.TABLE_HEADER_HEIGHT}px;
@@ -325,7 +327,7 @@ export const TableIconWrapper = styled.div<{
   box-shadow: ${props =>
     props.selected ? `inset 0px 4px 0px ${Colors.GREEN}` : "none"};
   width: 48px;
-  height: 45px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -339,4 +341,38 @@ export const TableIconWrapper = styled.div<{
 
 export const SortIconWrapper = styled.div<{ rotate: string }>`
   transform: ${props => (props.rotate === "true" ? "rotate(180deg)" : "none")};
+`;
+
+export const RenderOptionWrapper = styled.div<{ selected: boolean }>`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 150px;
+  background: ${props => props.selected && Colors.GREEN};
+  position: relative;
+  .title {
+    color: ${props => (props.selected ? Colors.WHITE : Colors.OXFORD_BLUE)};
+    width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .type {
+    position: absolute;
+    left: 135px;
+    font-size: 12px !important;
+    color: ${props => (props.selected ? Colors.WHITE : Colors.BLUE_BAYOUX)};
+  }
+`;
+
+export const MenuCategoryWrapper = styled.div`
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  color: ${Colors.RIVER_BED};
+`;
+
+export const MenuStyledOptionHeader = styled.div`
+  font-weight: 600;
 `;

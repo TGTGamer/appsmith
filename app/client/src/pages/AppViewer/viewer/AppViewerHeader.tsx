@@ -1,20 +1,23 @@
-import React from "react";
-import { Link, NavLink } from "react-router-dom";
+import React, { ReactElement, useRef, useEffect, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { Helmet } from "react-helmet";
 import styled from "styled-components";
 import StyledHeader from "components/designSystems/appsmith/StyledHeader";
 import AppsmithLogo from "assets/images/appsmith_logo_white.png";
 import Button from "components/editorComponents/Button";
-import { EDIT_APP, FORK_APP } from "constants/messages";
+import { EDIT_APP, FORK_APP, SIGN_IN } from "constants/messages";
 import {
   isPermitted,
   PERMISSION_TYPE,
 } from "pages/Applications/permissionHelpers";
 import {
+  Page,
   ApplicationPayload,
   PageListPayload,
 } from "constants/ReduxActionConstants";
 import {
   APPLICATIONS_URL,
+  AUTH_LOGIN_URL,
   getApplicationViewerPageURL,
   SIGN_UP_URL,
 } from "constants/routes";
@@ -27,6 +30,10 @@ import AppInviteUsersForm from "pages/organization/AppInviteUsersForm";
 import { getCurrentOrgId } from "selectors/organizationSelectors";
 import { HeaderIcons } from "icons/HeaderIcons";
 import { Colors } from "constants/Colors";
+import { getCurrentUser } from "selectors/usersSelectors";
+import { ANONYMOUS_USERNAME, User } from "constants/userConstants";
+import { isEllipsisActive } from "utils/helpers";
+import TooltipComponent from "components/ads/Tooltip";
 
 const HeaderWrapper = styled(StyledHeader)<{ hasPages: boolean }>`
   background: ${Colors.BALTIC_SEA};
@@ -126,14 +133,46 @@ type AppViewerHeaderProps = {
   currentApplicationDetails?: ApplicationPayload;
   pages: PageListPayload;
   currentOrgId: string;
+  currentUser?: User;
+};
+
+const PageTabName: React.FunctionComponent<{ name: string }> = ({ name }) => {
+  const tabNameRef = useRef<HTMLSpanElement>(null);
+  const [ellipsisActive, setEllipsisActive] = useState(false);
+  const tabNameText = <span ref={tabNameRef}>{name}</span>;
+
+  useEffect(() => {
+    if (isEllipsisActive(tabNameRef?.current)) {
+      setEllipsisActive(true);
+    }
+  }, [tabNameRef]);
+
+  return ellipsisActive ? (
+    <TooltipComponent maxWidth={400} content={name}>
+      {tabNameText}
+    </TooltipComponent>
+  ) : (
+    <>{tabNameText}</>
+  );
 };
 
 export const AppViewerHeader = (props: AppViewerHeaderProps) => {
-  const { currentApplicationDetails, pages, currentOrgId } = props;
+  const { currentApplicationDetails, pages, currentOrgId, currentUser } = props;
   const isExampleApp = currentApplicationDetails?.appIsExample;
   const userPermissions = currentApplicationDetails?.userPermissions ?? [];
   const permissionRequired = PERMISSION_TYPE.MANAGE_APPLICATION;
   const canEdit = isPermitted(userPermissions, permissionRequired);
+  const queryParams = new URLSearchParams(useLocation().search);
+  const hideHeader = !!queryParams.get("embed");
+  const HtmlTitle = () => {
+    if (!currentApplicationDetails?.name) return null;
+    return (
+      <Helmet>
+        <title>{currentApplicationDetails?.name}</title>
+      </Helmet>
+    );
+  };
+  if (hideHeader) return <HtmlTitle />;
   // Mark default page as first page
   const appPages = pages;
   if (appPages.length > 1) {
@@ -146,6 +185,7 @@ export const AppViewerHeader = (props: AppViewerHeaderProps) => {
   }
 
   const forkAppUrl = `${window.location.origin}${SIGN_UP_URL}?appId=${currentApplicationDetails?.id}`;
+  const loginAppUrl = `${window.location.origin}${AUTH_LOGIN_URL}?appId=${currentApplicationDetails?.id}`;
 
   let CTA = null;
 
@@ -173,10 +213,24 @@ export const AppViewerHeader = (props: AppViewerHeaderProps) => {
         filled
       />
     );
+  } else if (
+    currentApplicationDetails?.isPublic &&
+    currentUser?.username === ANONYMOUS_USERNAME
+  ) {
+    CTA = (
+      <ForkButton
+        className="t--fork-app"
+        href={loginAppUrl}
+        intent="primary"
+        text={SIGN_IN}
+        filled
+      />
+    );
   }
 
   return (
     <HeaderWrapper hasPages={pages.length > 1}>
+      <HtmlTitle />
       <HeaderRow justify={"space-between"}>
         <HeaderSection justify={"flex-start"}>
           <Link to={APPLICATIONS_URL}>
@@ -214,6 +268,7 @@ export const AppViewerHeader = (props: AppViewerHeaderProps) => {
                 orgId={currentOrgId}
                 applicationId={currentApplicationDetails.id}
                 title={currentApplicationDetails.name}
+                canOutsideClickClose={true}
               />
               {CTA}
             </>
@@ -230,8 +285,9 @@ export const AppViewerHeader = (props: AppViewerHeaderProps) => {
                 page.pageId,
               )}
               activeClassName="is-active"
+              className="t--page-switch-tab"
             >
-              <span>{page.pageName}</span>
+              <PageTabName name={page.pageName} />
             </PageTab>
           ))}
         </HeaderRow>
@@ -245,6 +301,7 @@ const mapStateToProps = (state: AppState): AppViewerHeaderProps => ({
   url: getEditorURL(state),
   currentApplicationDetails: state.ui.applications.currentApplication,
   currentOrgId: getCurrentOrgId(state),
+  currentUser: getCurrentUser(state),
 });
 
 export default connect(mapStateToProps)(AppViewerHeader);

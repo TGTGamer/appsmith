@@ -10,7 +10,7 @@ export type ExecutionResult = {
 export type ExecuteActionPayload = {
   dynamicString: string;
   event: ExecuteActionPayloadEvent;
-  responseData?: any;
+  responseData?: Array<any>;
 };
 
 export enum EventType {
@@ -37,6 +37,10 @@ export enum EventType {
   ON_MARKER_CLICK = "ON_MARKER_CLICK",
   ON_CREATE_MARKER = "ON_CREATE_MARKER",
   ON_TAB_CHANGE = "ON_TAB_CHANGE",
+  ON_VIDEO_START = "ON_VIDEO_START",
+  ON_VIDEO_END = "ON_VIDEO_END",
+  ON_VIDEO_PLAY = "ON_VIDEO_PLAY",
+  ON_VIDEO_PAUSE = "ON_VIDEO_PAUSE",
 }
 
 export type ActionType =
@@ -61,9 +65,11 @@ export interface PageAction {
 export interface ExecuteErrorPayload {
   actionId: string;
   error: any;
+  isPageLoad?: boolean;
 }
 
 // Group 1 = datasource (https://www.domain.com)
 // Group 2 = path (/nested/path)
 // Group 3 = params (?param=123&param2=12)
 export const urlGroupsRegexExp = /^(https?:\/{2}\S+?)(\/\S*?)(\?\S*)?$/;
+export const EXECUTION_PARAM_KEY = "executionParams";

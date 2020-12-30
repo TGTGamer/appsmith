@@ -13,6 +13,8 @@ import com.appsmith.external.plugins.PluginExecutor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.bson.internal.Base64;
@@ -34,12 +36,16 @@ import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 
+import javax.crypto.SecretKey;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -63,10 +69,14 @@ public class RestApiPlugin extends BasePlugin {
 
     @Slf4j
     @Extension
-    public static class RestApiPluginExecutor implements PluginExecutor {
+    public static class RestApiPluginExecutor implements PluginExecutor<Void> {
+
+        private final String IS_SEND_SESSION_ENABLED_KEY = "isSendSessionEnabled";
+        private final String SESSION_SIGNATURE_KEY_KEY = "sessionSignatureKey";
+        private final String SIGNATURE_HEADER_NAME = "X-APPSMITH-SIGNATURE";
 
         @Override
-        public Mono<ActionExecutionResult> execute(Object connection,
+        public Mono<ActionExecutionResult> execute(Void ignored,
                                                    DatasourceConfiguration datasourceConfiguration,
                                                    ActionConfiguration actionConfiguration) {
 
@@ -81,7 +91,8 @@ public class RestApiPlugin extends BasePlugin {
             HttpMethod httpMethod = actionConfiguration.getHttpMethod();
             URI uri;
             try {
-                uri = createFinalUriWithQueryParams(url, actionConfiguration.getQueryParameters());
+                String httpUrl = addHttpToUrlWhenPrefixNotPresent(url);
+                uri = createFinalUriWithQueryParams(httpUrl, actionConfiguration.getQueryParameters());
             } catch (URISyntaxException e) {
                 ActionExecutionRequest actionExecutionRequest = populateRequestFields(actionConfiguration, null);
                 actionExecutionRequest.setUrl(url);
@@ -124,9 +135,28 @@ public class RestApiPlugin extends BasePlugin {
 
             if (MediaType.APPLICATION_FORM_URLENCODED_VALUE.equals(reqContentType)
                     || MediaType.MULTIPART_FORM_DATA_VALUE.equals(reqContentType)) {
-                requestBodyAsString = convertPropertyListToReqBody(actionConfiguration.getBodyFormData());
+                requestBodyAsString = convertPropertyListToReqBody(actionConfiguration.getBodyFormData(), reqContentType);
             }
 
+            String secretKey;
+            try {
+                secretKey = getSignatureKey(datasourceConfiguration);
+            } catch (AppsmithPluginException e) {
+                return Mono.error(e);
+            }
+
+            if (secretKey != null) {
+                final SecretKey key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
+                final Instant now = Instant.now();
+                final String token = Jwts.builder()
+                        .setIssuer("Appsmith")
+                        .setIssuedAt(new Date(now.toEpochMilli()))
+                        .setExpiration(new Date(now.plusSeconds(600).toEpochMilli()))
+                        .signWith(key)
+                        .compact();
+
+                webClientBuilder.defaultHeader(SIGNATURE_HEADER_NAME, token);
+            }
 
             WebClient client = webClientBuilder.exchangeStrategies(EXCHANGE_STRATEGIES).build();
 
@@ -196,20 +226,63 @@ public class RestApiPlugin extends BasePlugin {
                     });
         }
 
-        private String convertPropertyListToReqBody(List<Property> bodyFormData) {
+        private String getSignatureKey(DatasourceConfiguration datasourceConfiguration) throws AppsmithPluginException {
+            if (!CollectionUtils.isEmpty(datasourceConfiguration.getProperties())) {
+                boolean isSendSessionEnabled = false;
+                String secretKey = null;
+
+                for (Property property : datasourceConfiguration.getProperties()) {
+                    if (IS_SEND_SESSION_ENABLED_KEY.equals(property.getKey())) {
+                        isSendSessionEnabled = "Y".equals(property.getValue());
+                    } else if (SESSION_SIGNATURE_KEY_KEY.equals(property.getKey())) {
+                        secretKey = property.getValue();
+                    }
+                }
+
+                if (isSendSessionEnabled) {
+                    if (StringUtils.isEmpty(secretKey) || secretKey.length() < 32) {
+                        throw new AppsmithPluginException(
+                                AppsmithPluginError.PLUGIN_ERROR,
+                                "Secret key is required when sending session details is switched on," +
+                                        " and should be at least 32 characters in length."
+                        );
+                    }
+                    return secretKey;
+                }
+            }
+
+            return null;
+        }
+
+        public String convertPropertyListToReqBody(List<Property> bodyFormData, String reqContentType) {
             if (bodyFormData == null || bodyFormData.isEmpty()) {
                 return "";
             }
 
             String reqBody = bodyFormData.stream()
-                    .map(property -> property.getKey() + "=" + property.getValue())
+                    .map(property -> {
+                        String key = property.getKey();
+                        String value = property.getValue();
+
+                        if(MediaType.APPLICATION_FORM_URLENCODED_VALUE.equals(reqContentType)) {
+                            try {
+                                value = URLEncoder.encode(value, StandardCharsets.UTF_8.toString());
+                            } catch (UnsupportedEncodingException e) {
+                                throw new UnsupportedOperationException(e);
+                            }
+                        }
+
+                        return key + "="+ value;
+                    })
                     .collect(Collectors.joining("&"));
+
             return reqBody;
         }
 
         /**
          * If the headers list of properties contains a `Content-Type` header, verify if the value of that header is a
          * valid media type.
+         *
          * @param headers List of header Property objects to look for Content-Type headers in.
          * @return An error message string if the Content-Type value is invalid, otherwise `null`.
          */
@@ -286,6 +359,7 @@ public class RestApiPlugin extends BasePlugin {
          * type. However, only `Map` and `List` top-levels are supported. Note that the map or list may contain
          * anything, like booleans or number or even more maps or lists. It's only that the top-level type should be a
          * map / list.
+         *
          * @param jsonString A string that confirms to JSON syntax. Shouldn't be null.
          * @return An object of type `Map`, `List`, if applicable, or `null`.
          */
@@ -307,12 +381,12 @@ public class RestApiPlugin extends BasePlugin {
         }
 
         @Override
-        public Mono<Object> datasourceCreate(DatasourceConfiguration datasourceConfiguration) {
+        public Mono<Void> datasourceCreate(DatasourceConfiguration datasourceConfiguration) {
             return Mono.empty();
         }
 
         @Override
-        public void datasourceDestroy(Object connection) {
+        public void datasourceDestroy(Void connection) {
             // REST API plugin doesn't have a datasource.
         }
 
@@ -331,6 +405,30 @@ public class RestApiPlugin extends BasePlugin {
             final String contentTypeError = verifyContentType(datasourceConfiguration.getHeaders());
             if (contentTypeError != null) {
                 invalids.add("Invalid Content-Type: " + contentTypeError);
+            }
+
+            if (!CollectionUtils.isEmpty(datasourceConfiguration.getProperties())) {
+                boolean isSendSessionEnabled = false;
+                String secretKey = null;
+
+                for (Property property : datasourceConfiguration.getProperties()) {
+                    if ("isSendSessionEnabled".equals(property.getKey())) {
+                        isSendSessionEnabled = "Y".equals(property.getValue());
+                    } else if ("sessionSignatureKey".equals(property.getKey())) {
+                        secretKey = property.getValue();
+                    }
+                }
+
+                if (isSendSessionEnabled && (StringUtils.isEmpty(secretKey) || secretKey.length() < 32)) {
+                    invalids.add("Secret key is required when sending session is switched on" +
+                            ", and should be at least 32 characters long.");
+                }
+            }
+
+            try {
+                getSignatureKey(datasourceConfiguration);
+            } catch (AppsmithPluginException e) {
+                invalids.add(e.getMessage());
             }
 
             return invalids;
@@ -362,6 +460,13 @@ public class RestApiPlugin extends BasePlugin {
             return contentType;
         }
 
+        private String addHttpToUrlWhenPrefixNotPresent(String url) {
+            if (url == null || url.toLowerCase().startsWith("http") || url.contains("://")) {
+                return url;
+            }
+            return "http://" + url;
+        }
+
         private URI createFinalUriWithQueryParams(String url, List<Property> queryParams) throws URISyntaxException {
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.newInstance();
             uriBuilder.uri(new URI(url));
@@ -379,7 +484,7 @@ public class RestApiPlugin extends BasePlugin {
         }
 
         private ActionExecutionRequest populateRequestFields(ActionConfiguration actionConfiguration,
-                                                            URI uri) {
+                                                             URI uri) {
 
             ActionExecutionRequest actionExecutionRequest = new ActionExecutionRequest();
 

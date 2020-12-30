@@ -3,12 +3,14 @@ import TabsComponent from "components/designSystems/appsmith/TabsComponent";
 import { WidgetType, WidgetTypes } from "constants/WidgetConstants";
 import BaseWidget, { WidgetProps, WidgetState } from "./BaseWidget";
 import WidgetFactory, { TriggerPropertiesMap } from "utils/WidgetFactory";
-import { generateReactKey } from "utils/generators";
-import { WidgetPropertyValidationType } from "utils/ValidationFactory";
+import { WidgetPropertyValidationType } from "utils/WidgetValidation";
 import { VALIDATION_TYPES } from "constants/WidgetValidation";
 import _ from "lodash";
 import { EventType } from "constants/ActionConstants";
 import { WidgetOperations } from "widgets/BaseWidget";
+import * as Sentry from "@sentry/react";
+import { generateReactKey } from "utils/generators";
+import withMeta, { WithMeta } from "./MetaHOC";
 
 class TabsWidget extends BaseWidget<
   TabsWidgetProps<TabContainerWidgetProps>,
@@ -21,28 +23,23 @@ class TabsWidget extends BaseWidget<
     };
   }
 
-  onTabChange = (tabId: string) => {
-    this.updateWidgetMetaProperty("selectedTabId", tabId);
-    if (this.props.onTabSelected) {
-      super.executeAction({
-        dynamicString: this.props.onTabSelected,
-        event: {
-          type: EventType.ON_TAB_CHANGE,
-        },
-      });
-    }
+  onTabChange = (tabWidgetId: string) => {
+    this.props.updateWidgetMetaProperty("selectedTabWidgetId", tabWidgetId, {
+      dynamicString: this.props.onTabSelected,
+      event: {
+        type: EventType.ON_TAB_CHANGE,
+      },
+    });
   };
 
   static getDerivedPropertiesMap() {
     return {
-      selectedTab: `{{_.find(this.tabs, { id: this.selectedTabId }).label}}`,
+      selectedTab: `{{_.find(this.tabs, { widgetId: this.selectedTabWidgetId }).label}}`,
     };
   }
 
   static getDefaultPropertiesMap(): Record<string, string> {
-    return {
-      selectedTab: "defaultTab",
-    };
+    return {};
   }
 
   static getTriggerPropertyMap(): TriggerPropertiesMap {
@@ -60,13 +57,12 @@ class TabsWidget extends BaseWidget<
   }
 
   renderComponent = () => {
-    const selectedTabId = this.props.selectedTabId;
-    const childWidgetData: TabContainerWidgetProps = this.props.children.filter(
-      item => {
-        return selectedTabId === item.tabId;
-      },
-    )[0];
-
+    const selectedTabWidgetId = this.props.selectedTabWidgetId;
+    const childWidgetData: TabContainerWidgetProps = this.props.children
+      ?.filter(Boolean)
+      .filter(item => {
+        return selectedTabWidgetId === item.widgetId;
+      })[0];
     if (!childWidgetData) {
       return null;
     }
@@ -88,88 +84,82 @@ class TabsWidget extends BaseWidget<
     return "TABS_WIDGET";
   }
 
-  addTabContainer = () => {
-    let tabId = "";
-    const childrenTabIds: string[] = this.props.children.map(children => {
-      return children.tabId;
-    });
-    for (let index = 0; index < this.props.tabs.length; index++) {
-      const tab = this.props.tabs[index];
-      if (!childrenTabIds.includes(tab.id)) {
-        tabId = tab.id;
+  addTabContainer = (widgetIds: string[]) => {
+    widgetIds.forEach((newWidgetId: string) => {
+      const tab = this.props.tabs.find(tab => tab.widgetId === newWidgetId);
+      if (tab) {
+        const columns =
+          (this.props.rightColumn - this.props.leftColumn) *
+          this.props.parentColumnSpace;
+        const rows =
+          (this.props.bottomRow - this.props.topRow - 1) *
+          this.props.parentRowSpace;
+        const config = {
+          type: WidgetTypes.CANVAS_WIDGET,
+          columns: columns,
+          rows: rows,
+          topRow: 1,
+          newWidgetId,
+          widgetId: this.props.widgetId,
+          props: {
+            tabId: tab.id,
+            tabName: tab.label,
+            containerStyle: "none",
+            canExtend: false,
+            detachFromLayout: true,
+            children: [],
+          },
+        };
+        this.updateWidget(
+          WidgetOperations.ADD_CHILD,
+          this.props.widgetId,
+          config,
+        );
       }
-    }
-    const columns =
-      (this.props.rightColumn - this.props.leftColumn) *
-      this.props.parentColumnSpace;
-    const rows =
-      (this.props.bottomRow - this.props.topRow - 1) *
-      this.props.parentRowSpace;
-    const config = {
-      type: WidgetTypes.CANVAS_WIDGET,
-      columns: columns,
-      rows: rows,
-      parentRowSpace: 1,
-      parentColumnSpace: 1,
-      leftColumn: 0,
-      topRow: 1,
-      newWidgetId: generateReactKey(),
-      widgetId: this.props.widgetId,
-      props: {
-        tabId: tabId,
-        containerStyle: "none",
-        canExtend: false,
-        detachFromLayout: true,
-        children: [],
-      },
-    };
-    this.updateWidget(WidgetOperations.ADD_CHILD, this.props.widgetId, config);
+    });
   };
 
-  removeTabContainer = () => {
-    let removedContainerWidgetId = "";
-    let removedTabId = "";
-    const tabIds: string[] = this.props.tabs.map(tab => {
-      return tab.id;
-    });
-    for (let index = 0; index < this.props.children.length; index++) {
-      const children = this.props.children[index];
-      if (!tabIds.includes(children.tabId)) {
-        removedContainerWidgetId = children.widgetId;
-        removedTabId = children.tabId;
-      }
-    }
-    /* Selecting first tab as default tab when no tab is selected */
-    if (
-      this.props.tabs.length > 1 &&
-      removedTabId === this.props.selectedTabId
-    ) {
-      setTimeout(() => {
-        this.updateWidgetProperty(
-          "defaultTab",
-          this.props.tabs.filter(tab => tab.id !== removedTabId)[0].label,
-        );
-      }, 0);
-    }
-    this.updateWidget(WidgetOperations.DELETE, removedContainerWidgetId, {
-      parentId: this.props.widgetId,
+  removeTabContainer = (widgetIds: string[]) => {
+    widgetIds.forEach((widgetIdToRemove: string) => {
+      this.updateWidget(WidgetOperations.DELETE, widgetIdToRemove, {
+        parentId: this.props.widgetId,
+      });
     });
   };
 
   componentDidUpdate(prevProps: TabsWidgetProps<TabContainerWidgetProps>) {
-    super.componentDidUpdate(prevProps);
-    if (this.props.tabs) {
-      if (
-        this.props.tabs.length !== prevProps.tabs.length &&
-        this.props.children.length !== this.props.tabs.length
-      ) {
-        //adding container widget for the new tab
-        if (this.props.tabs.length > this.props.children.length) {
-          this.addTabContainer();
+    if (
+      this.props.tabs.length !== prevProps.tabs.length &&
+      this.props.children.length !== this.props.tabs.length
+    ) {
+      const tabWidgetIds = this.props.tabs.map(tab => tab.widgetId);
+      const childWidgetIds = this.props.children
+        .filter(Boolean)
+        .map(child => child.widgetId);
+      // If the tabs and children are different,
+      // add and/or remove tab container widgets
+
+      if (!this.props.invalidProps?.tabs) {
+        if (_.xor(childWidgetIds, tabWidgetIds).length > 0) {
+          const widgetIdsToRemove: string[] = _.without(
+            childWidgetIds,
+            ...tabWidgetIds,
+          );
+          const widgetIdsToCreate: string[] = _.without(
+            tabWidgetIds,
+            ...childWidgetIds,
+          );
+          this.addTabContainer(widgetIdsToCreate);
+          this.removeTabContainer(widgetIdsToRemove);
         }
-        //removing container widget for the removed tab
-        else {
-          this.removeTabContainer();
+
+        // If all tabs were removed.
+        if (tabWidgetIds.length === 0) {
+          const newTabContainerWidgetId = generateReactKey();
+          const tabs = [
+            { id: "tab1", widgetId: newTabContainerWidgetId, label: "Tab 1" },
+          ];
+          this.updateWidgetProperty("tabs", tabs);
         }
       }
     }
@@ -178,20 +168,82 @@ class TabsWidget extends BaseWidget<
         const selectedTab = _.find(this.props.tabs, {
           label: this.props.defaultTab,
         });
-        const selectedTabId = selectedTab ? selectedTab.id : undefined;
-        this.updateWidgetMetaProperty("selectedTabId", selectedTabId);
+        const selectedTabWidgetId = selectedTab
+          ? selectedTab.widgetId
+          : undefined;
+        this.props.updateWidgetMetaProperty(
+          "selectedTabWidgetId",
+          selectedTabWidgetId,
+        );
       }
     }
   }
 
+  generateTabContainers = () => {
+    const { tabs, widgetId } = this.props;
+    const childWidgetIds = this.props.children
+      ?.filter(Boolean)
+      .map(child => child.widgetId);
+    let tabsToCreate = tabs;
+    if (childWidgetIds && childWidgetIds.length > 0) {
+      tabsToCreate = tabs.filter(
+        tab => childWidgetIds.indexOf(tab.widgetId) === -1,
+      );
+    }
+
+    const tabContainers = tabsToCreate.map(tab => ({
+      type: WidgetTypes.CANVAS_WIDGET,
+      tabId: tab.id,
+      tabName: tab.label,
+      widgetId: tab.widgetId,
+      parentId: widgetId,
+      detachFromLayout: true,
+      children: [],
+      parentRowSpace: 1,
+      parentColumnSpace: 1,
+      leftColumn: 0,
+      rightColumn:
+        (this.props.rightColumn - this.props.leftColumn) *
+        this.props.parentColumnSpace,
+      topRow: 0,
+      bottomRow:
+        (this.props.bottomRow - this.props.topRow) * this.props.parentRowSpace,
+      isLoading: false,
+    }));
+    this.updateWidget(WidgetOperations.ADD_CHILDREN, widgetId, {
+      children: tabContainers,
+    });
+  };
+
   componentDidMount() {
+    // If we have a defaultTab
     if (this.props.defaultTab) {
+      // Find the default Tab object
       const selectedTab = _.find(this.props.tabs, {
         label: this.props.defaultTab,
       });
-      const selectedTabId = selectedTab ? selectedTab.id : undefined;
-      this.updateWidgetMetaProperty("selectedTabId", selectedTabId);
+      // Find the default Tab id
+      const selectedTabWidgetId = selectedTab?.widgetId;
+      // If we have a legitimate default tab Id and it is not already the selected Tab
+      if (
+        selectedTabWidgetId &&
+        selectedTabWidgetId !== this.props.selectedTabWidgetId
+      ) {
+        // Select the default tab
+        this.props.updateWidgetMetaProperty(
+          "selectedTabWidgetId",
+          selectedTabWidgetId,
+        );
+      }
+    } else if (!this.props.selectedTabWidgetId) {
+      // If no tab is selected
+      // Select the first tab in the tabs list.
+      this.props.updateWidgetMetaProperty(
+        "selectedTabWidgetId",
+        this.props.tabs[0].widgetId,
+      );
     }
+    this.generateTabContainers();
   }
 }
 
@@ -200,12 +252,14 @@ export interface TabContainerWidgetProps extends WidgetProps {
 }
 
 export interface TabsWidgetProps<T extends TabContainerWidgetProps>
-  extends WidgetProps {
+  extends WidgetProps,
+    WithMeta {
   isVisible?: boolean;
   shouldScrollContents: boolean;
   tabs: Array<{
     id: string;
     label: string;
+    widgetId: string;
   }>;
   shouldShowTabs: boolean;
   children: T[];
@@ -213,7 +267,8 @@ export interface TabsWidgetProps<T extends TabContainerWidgetProps>
   onTabSelected?: string;
   snapRows?: number;
   defaultTab: string;
-  selectedTabId: string;
+  selectedTabWidgetId: string;
 }
 
 export default TabsWidget;
+export const ProfiledTabsWidget = Sentry.withProfiler(withMeta(TabsWidget));

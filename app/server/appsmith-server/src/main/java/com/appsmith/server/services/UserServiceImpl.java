@@ -29,6 +29,7 @@ import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.convert.MongoConverter;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
@@ -38,6 +39,7 @@ import reactor.core.scheduler.Scheduler;
 import javax.validation.Validator;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -71,7 +73,7 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
     private static final String WELCOME_USER_EMAIL_TEMPLATE = "email/welcomeUserTemplate.html";
     private static final String FORGOT_PASSWORD_EMAIL_TEMPLATE = "email/forgotPasswordTemplate.html";
     private static final String FORGOT_PASSWORD_CLIENT_URL_FORMAT = "%s/user/resetPassword?token=%s&email=%s";
-    private static final String INVITE_USER_CLIENT_URL_FORMAT = "%s/user/signup?token=%s&email=%s";
+    private static final String INVITE_USER_CLIENT_URL_FORMAT = "%s/user/signup?email=%s";
     private static final String INVITE_USER_EMAIL_TEMPLATE = "email/inviteUserCreatorTemplate.html";
     private static final String USER_ADDED_TO_ORGANIZATION_EMAIL_TEMPLATE = "email/inviteExistingUserToOrganizationTemplate.html";
     // We default the origin header to the production deployment of the client's URL
@@ -158,7 +160,7 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
 
     /**
      * This function creates a one-time token for resetting the user's password. This token is stored in the `passwordResetToken`
-     * collection with an expiry time of 1 hour. The user must provide this one-time token when updating with the new password.
+     * collection with an expiry time of 48 hours. The user must provide this one-time token when updating with the new password.
      *
      * @param resetUserPasswordDTO
      * @return
@@ -182,7 +184,7 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
 
         // Check if the user exists in our DB. If not, we will not send a password reset link to the user
         Mono<User> userMono = repository.findByEmail(email)
-                .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, FieldName.USER, email)));
+                .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.USER_NOT_FOUND, email)));
 
         // Generate the password reset link for the user
         Mono<PasswordResetToken> passwordResetTokenMono = passwordResetTokenRepository.findByEmail(email)
@@ -456,10 +458,10 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
                     final String templateOrganizationId = tuple.getT2();
 
                     if (!StringUtils.hasText(templateOrganizationId)) {
-                        // Since template organization is not configured, we create an empty personal organization.
+                        // Since template organization is not configured, we create an empty default organization.
                         final User savedUser = tuple.getT1();
-                        log.debug("Creating blank personal organization for user '{}'.", savedUser.getEmail());
-                        return organizationService.createPersonal(new Organization(), savedUser);
+                        log.debug("Creating blank default organization for user '{}'.", savedUser.getEmail());
+                        return organizationService.createDefault(new Organization(), savedUser);
                     }
 
                     return Mono.empty();
@@ -470,10 +472,10 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
 
     /**
      * This function creates a new user in the system. Primarily used by new users signing up for the first time on the
-     * platform. This flow also ensures that a personal workspace name is created for the user. The new user is then
-     * given admin permissions to the personal workspace.
+     * platform. This flow also ensures that a default organization name is created for the user. The new user is then
+     * given admin permissions to the default organization.
      * <p>
-     * For new user invite flow, please {@link UserService#inviteUser(InviteUsersDTO, String)}
+     * For new user invite flow, please {@link UserService#inviteUsers(InviteUsersDTO, String)}
      *
      * @param user User object representing the user to be created/enabled.
      * @return Publishes the user object, after having been saved.
@@ -566,20 +568,25 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
      * @return Publishes the invited users, after being saved with the new organization ID.
      */
     @Override
-    public Flux<User> inviteUser(InviteUsersDTO inviteUsersDTO, String originHeader) {
+    public Flux<User> inviteUsers(InviteUsersDTO inviteUsersDTO, String originHeader) {
 
         if (originHeader == null || originHeader.isBlank()) {
             return Flux.error(new AppsmithException(AppsmithError.INVALID_PARAMETER, FieldName.ORIGIN));
         }
 
-        List<String> usernames = inviteUsersDTO.getUsernames();
+        List<String> originalUsernames = inviteUsersDTO.getUsernames();
 
-        if (usernames == null || usernames.isEmpty()) {
+        if (originalUsernames == null || originalUsernames.isEmpty()) {
             return Flux.error(new AppsmithException(AppsmithError.INVALID_PARAMETER, FieldName.USERNAMES));
         }
 
         if (inviteUsersDTO.getRoleName() == null || inviteUsersDTO.getRoleName().isEmpty()) {
             return Flux.error(new AppsmithException(AppsmithError.INVALID_PARAMETER, FieldName.ROLE));
+        }
+
+        List<String> usernames = new ArrayList<>();
+        for (String username : originalUsernames) {
+             usernames.add(username.toLowerCase());
         }
 
         Mono<User> currentUserMono = sessionUserService.getCurrentUser().cache();
@@ -626,16 +633,12 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
                                 log.debug("Going to send email to user {} informing that the user has been added to new organization {}",
                                         existingUser.getEmail(), organization.getName());
                                 params.put("inviteUrl", originHeader);
-                                Mono<String> emailMono = emailSender.sendMail(existingUser.getEmail(),
+                                Mono<Boolean> emailMono = emailSender.sendMail(existingUser.getEmail(),
                                         "Appsmith: You have been added to a new organization",
                                         USER_ADDED_TO_ORGANIZATION_EMAIL_TEMPLATE, params);
 
                                 return emailMono
-                                        .thenReturn(existingUser)
-                                        .onErrorResume(error -> {
-                                            log.error("Unable to send invite user email to {}. Cause: ", existingUser.getEmail(), error);
-                                            return Mono.just(existingUser);
-                                        });
+                                        .thenReturn(existingUser);
                             })
                             .switchIfEmpty(createNewUserAndSendInviteEmail(username, originHeader, params));
                 })
@@ -678,7 +681,8 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
 
     private Mono<User> createNewUserAndSendInviteEmail(String email, String originHeader, Map<String, String> params) {
         User newUser = new User();
-        newUser.setEmail(email);
+        newUser.setEmail(email.toLowerCase());
+
         // This is a new user. Till the user signs up, this user would be disabled.
         newUser.setIsEnabled(false);
 
@@ -686,28 +690,22 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
         // user was invited.
         newUser.setInviteToken(UUID.randomUUID().toString());
 
-        // Call user service's userCreate function so that the personal organization, etc are also created along with assigning basic permissions.
+        // Call user service's userCreate function so that the default organization, etc are also created along with assigning basic permissions.
         return userCreate(newUser)
                 .flatMap(createdUser -> {
-                    log.debug("Going to send email for invite user to {} with token {}", createdUser.getEmail(), createdUser.getInviteToken());
+                    log.debug("Going to send email for invite user to {}", createdUser.getEmail());
                     String inviteUrl = String.format(
                             INVITE_USER_CLIENT_URL_FORMAT,
                             originHeader,
-                            URLEncoder.encode(createdUser.getInviteToken(), StandardCharsets.UTF_8),
                             URLEncoder.encode(createdUser.getEmail(), StandardCharsets.UTF_8)
                     );
 
-                    params.put("token", createdUser.getInviteToken());
                     params.put("inviteUrl", inviteUrl);
-                    Mono<String> emailMono = emailSender.sendMail(createdUser.getEmail(), "Invite for Appsmith", INVITE_USER_EMAIL_TEMPLATE, params);
+                    Mono<Boolean> emailMono = emailSender.sendMail(createdUser.getEmail(), "Invite for Appsmith", INVITE_USER_EMAIL_TEMPLATE, params);
 
                     // We have sent out the emails. Just send back the saved user.
                     return emailMono
-                            .thenReturn(createdUser)
-                            .onErrorResume(error -> {
-                                log.error("Unable to send invite user email to {}. Cause: ", createdUser.getEmail(), error);
-                                return Mono.just(createdUser);
-                            });
+                            .thenReturn(createdUser);
                 });
     }
 
@@ -740,6 +738,12 @@ public class UserServiceImpl extends BaseService<UserRepository, User, String> i
         }
 
         return Mono.just(Boolean.TRUE);
+    }
+
+    @Override
+    public Flux<User> get(MultiValueMap<String, String> params) {
+        // Get All Users should not be supported. Return an error
+        return Flux.error(new AppsmithException(AppsmithError.UNSUPPORTED_OPERATION));
     }
 
 }

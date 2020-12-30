@@ -6,7 +6,11 @@ import FormLabel from "components/editorComponents/FormLabel";
 import { Field, WrappedFieldProps } from "redux-form";
 import styled from "styled-components";
 
-type Props = WrappedFieldProps & SwitchControlProps;
+type Props = WrappedFieldProps & {
+  label: string;
+  isRequired: boolean;
+  info: string;
+};
 
 const StyledFormLabel = styled(FormLabel)`
   margin-bottom: 0px;
@@ -21,41 +25,58 @@ const SwitchWrapped = styled.div`
   }
 `;
 
-export class SwitchField extends React.Component<Props> {
+const Info = styled.div`
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 8px;
+`;
+
+export class SwitchField extends React.Component<Props, any> {
   render() {
-    const { label, isRequired, input } = this.props;
+    const { label, isRequired, input, info } = this.props;
 
     return (
-      <SwitchWrapped>
-        <StyledFormLabel>
-          {label} {isRequired && "*"}
-        </StyledFormLabel>
-        <StyledSwitch
-          checked={input.value}
-          onChange={value => input.onChange(value)}
-          large
-        />
-      </SwitchWrapped>
+      <div>
+        <SwitchWrapped data-cy={this.props.input.name}>
+          <StyledFormLabel>
+            {label} {isRequired && "*"}
+          </StyledFormLabel>
+          <StyledSwitch
+            checked={input.value}
+            onChange={value => input.onChange(value)}
+            large
+          />
+        </SwitchWrapped>
+        {info && <Info>{info}</Info>}
+      </div>
     );
   }
 }
 
 class SwitchControl extends BaseControl<SwitchControlProps> {
   render() {
-    const { configProperty } = this.props;
+    const { configProperty, label, isRequired, info } = this.props;
 
     return (
       <React.Fragment>
-        <Field name={configProperty} component={SwitchField} {...this.props} />
+        <Field
+          name={configProperty}
+          component={SwitchField}
+          label={label}
+          isRequired={isRequired}
+          info={info}
+        />
       </React.Fragment>
     );
   }
 
   getControlType(): ControlType {
-    return "FILE_PICKER";
+    return "SWITCH";
   }
 }
 
-export type SwitchControlProps = ControlProps;
+export interface SwitchControlProps extends ControlProps {
+  info?: string;
+}
 
 export default SwitchControl;

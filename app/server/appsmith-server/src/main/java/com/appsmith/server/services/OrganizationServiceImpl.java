@@ -3,7 +3,9 @@ package com.appsmith.server.services;
 import com.appsmith.server.acl.AclPermission;
 import com.appsmith.server.acl.AppsmithRole;
 import com.appsmith.server.acl.RoleGraph;
+import com.appsmith.server.constants.Constraint;
 import com.appsmith.server.constants.FieldName;
+import com.appsmith.server.domains.Asset;
 import com.appsmith.server.domains.Organization;
 import com.appsmith.server.domains.OrganizationPlugin;
 import com.appsmith.server.domains.OrganizationSetting;
@@ -13,13 +15,18 @@ import com.appsmith.server.domains.UserRole;
 import com.appsmith.server.dtos.OrganizationPluginStatus;
 import com.appsmith.server.exceptions.AppsmithError;
 import com.appsmith.server.exceptions.AppsmithException;
+import com.appsmith.server.repositories.AssetRepository;
 import com.appsmith.server.repositories.OrganizationRepository;
 import com.appsmith.server.repositories.PluginRepository;
 import com.appsmith.server.repositories.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.convert.MongoConverter;
+import org.springframework.http.codec.multipart.Part;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.MultiValueMap;
@@ -51,6 +58,7 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
     private final UserOrganizationService userOrganizationService;
     private final UserRepository userRepository;
     private final RoleGraph roleGraph;
+    private final AssetRepository assetRepository;
 
     @Autowired
     public OrganizationServiceImpl(Scheduler scheduler,
@@ -64,7 +72,8 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
                                    SessionUserService sessionUserService,
                                    UserOrganizationService userOrganizationService,
                                    UserRepository userRepository,
-                                   RoleGraph roleGraph) {
+                                   RoleGraph roleGraph,
+                                   AssetRepository assetRepository) {
         super(scheduler, validator, mongoConverter, reactiveMongoTemplate, repository, analyticsService);
         this.settingService = settingService;
         this.pluginRepository = pluginRepository;
@@ -72,6 +81,7 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
         this.userOrganizationService = userOrganizationService;
         this.userRepository = userRepository;
         this.roleGraph = roleGraph;
+        this.assetRepository = assetRepository;
     }
 
     @Override
@@ -99,16 +109,17 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
     }
 
     /**
-     * Creates the given organization as a personal organization for the given user. That is, the organization's name
-     * is changed to "[username]'s Personal Organization" and then created. The current value of the organization name
+     * Creates the given organization as a default organization for the given user. That is, the organization's name
+     * is changed to "[username]'s apps" and then created. The current value of the organization name
      * is discarded.
+     *
      * @param organization Organization object to be created.
-     * @param user User to whom this organization will belong to, as a personal organization.
+     * @param user         User to whom this organization will belong to, as a default organization.
      * @return Publishes the saved organization.
      */
     @Override
-    public Mono<Organization> createPersonal(final Organization organization, User user) {
-        organization.setName(user.computeFirstName() + "'s Personal Organization");
+    public Mono<Organization> createDefault(final Organization organization, User user) {
+        organization.setName(user.computeFirstName() + "'s apps");
         return create(organization, user);
     }
 
@@ -121,7 +132,7 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
      * 5. Assigns the default groups to the user creating the organization
      *
      * @param organization Organization object to be created.
-     * @param user User to whom this organization will belong to.
+     * @param user         User to whom this organization will belong to.
      * @return Publishes the saved organization.
      */
     @Override
@@ -136,6 +147,10 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
 
         if (!isManageOrgPolicyPresent) {
             return Mono.error(new AppsmithException(AppsmithError.UNAUTHORIZED_ACCESS));
+        }
+
+        if (organization.getEmail() == null) {
+            organization.setEmail(user.getEmail());
         }
 
         Mono<Organization> setSlugMono;
@@ -249,7 +264,9 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
 
     @Override
     public Flux<Organization> findByIdsIn(Set<String> ids, AclPermission permission) {
-        return repository.findByIdsIn(ids, permission);
+        Sort sort = Sort.by(FieldName.NAME);
+
+        return repository.findByIdsIn(ids, permission, sort);
     }
 
     @Override
@@ -285,7 +302,7 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
 
                     Set<AppsmithRole> appsmithRoles = roleGraph.generateHierarchicalRoles(roleName);
 
-                    Map<String, String> appsmithRolesMap =  appsmithRoles
+                    Map<String, String> appsmithRolesMap = appsmithRoles
                             .stream()
                             .collect(toMap(AppsmithRole::getName, AppsmithRole::getDescription));
 
@@ -303,5 +320,75 @@ public class OrganizationServiceImpl extends BaseService<OrganizationRepository,
                     return CollectionUtils.isEmpty(userRoles) ? Collections.emptyList() : userRoles;
                 });
     }
-}
 
+    @Override
+    public Mono<Organization> uploadLogo(String organizationId, Part filePart) {
+        return repository
+                .findById(organizationId, MANAGE_ORGANIZATIONS)
+                .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, FieldName.ORGANIZATION, organizationId)))
+                .flatMap(organization -> {
+                    if (filePart != null && filePart.headers().getContentType() != null) {
+                        // Default implementation for the BufferFactory used breaks down the FilePart into chunks of 4KB
+                        // To limit file size to 250KB, we only allow 63 (250/4 = 62.5) such chunks to be derived from the incoming FilePart
+                        return filePart.content().count().flatMap(count -> {
+                            if (count > (int) Math.ceil(Constraint.ORGANIZATION_LOGO_SIZE_KB / 4.0)) {
+                                return Mono.error(new AppsmithException(AppsmithError.PAYLOAD_TOO_LARGE, Constraint.ORGANIZATION_LOGO_SIZE_KB));
+                            } else {
+                                return Mono.zip(Mono.just(organization), DataBufferUtils.join(filePart.content()));
+                            }
+                        });
+                    } else {
+                        return Mono.error(new AppsmithException(AppsmithError.VALIDATION_FAILURE, "Please upload a valid image."));
+                    }
+                })
+                .flatMap(tuple -> {
+                    final Organization organization = tuple.getT1();
+                    final DataBuffer dataBuffer = tuple.getT2();
+                    final String prevAssetId = organization.getLogoAssetId();
+
+                    byte[] data = new byte[dataBuffer.readableByteCount()];
+                    dataBuffer.read(data);
+                    DataBufferUtils.release(dataBuffer);
+
+                    return assetRepository
+                            .save(new Asset(filePart.headers().getContentType(), data))
+                            .flatMap(asset -> {
+                                organization.setLogoAssetId(asset.getId());
+                                Mono<Organization> savedOrganization = repository.save(organization);
+                                Mono<Asset> createdAsset = analyticsService.sendCreateEvent(asset);
+                                return savedOrganization.zipWith(createdAsset);
+                            })
+                            .flatMap(savedTuple -> {
+                                Organization savedOrganization = savedTuple.getT1();
+                                if (prevAssetId != null) {
+                                    return assetRepository.findById(prevAssetId)
+                                            .flatMap(asset -> assetRepository.delete(asset).thenReturn(asset))
+                                            .flatMap(analyticsService::sendDeleteEvent)
+                                            .thenReturn(savedOrganization);
+                                } else {
+                                    return Mono.just(savedOrganization);
+                                }
+                            });
+                });
+    }
+
+    @Override
+    public Mono<Organization> deleteLogo(String organizationId) {
+        return repository
+                .findById(organizationId, MANAGE_ORGANIZATIONS)
+                .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, FieldName.ORGANIZATION, organizationId)))
+                .flatMap(organization -> {
+                    final String prevAssetId = organization.getLogoAssetId();
+                    if(prevAssetId == null) {
+                        return Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, FieldName.ASSET, prevAssetId));
+                    }
+                    organization.setLogoAssetId(null);
+                    return assetRepository.findById(prevAssetId)
+                            .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, FieldName.ASSET, prevAssetId)))
+                            .flatMap(asset -> assetRepository.delete(asset).thenReturn(asset))
+                            .flatMap(analyticsService::sendDeleteEvent)
+                            .then(repository.save(organization));
+                });
+    }
+
+}

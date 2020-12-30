@@ -20,6 +20,7 @@ import {
   CompactMode,
   CompactModeTypes,
 } from "widgets/TableWidget";
+import { EventType } from "constants/ActionConstants";
 
 interface TableProps {
   width: number;
@@ -32,23 +33,24 @@ interface TableProps {
   columns: ReactTableColumnProps[];
   hiddenColumns?: string[];
   updateHiddenColumns: (hiddenColumns?: string[]) => void;
-  data: object[];
+  data: Array<Record<string, unknown>>;
   editMode: boolean;
   columnNameMap?: { [key: string]: string };
   getColumnMenu: (columnIndex: number) => ColumnMenuOptionProps[];
   handleColumnNameUpdate: (columnIndex: number, columnName: string) => void;
   sortTableColumn: (columnIndex: number, asc: boolean) => void;
-  handleResizeColumn: Function;
+  handleResizeColumn: (columnIndex: number, columnWidth: string) => void;
   selectTableRow: (
-    row: { original: object; index: number },
+    row: { original: Record<string, unknown>; index: number },
     isSelected: boolean,
   ) => void;
   pageNo: number;
-  updatePageNo: Function;
+  updatePageNo: (pageNo: number, event?: EventType) => void;
   nextPageClick: () => void;
   prevPageClick: () => void;
   serverSidePaginationEnabled: boolean;
   selectedRowIndex: number;
+  selectedRowIndices: number[];
   disableDrag: () => void;
   enableDrag: () => void;
   searchTableData: (searchKey: any) => void;
@@ -62,7 +64,6 @@ interface TableProps {
 const defaultColumn = {
   minWidth: 30,
   width: 150,
-  maxWidth: 400,
 };
 
 export const Table = (props: TableProps) => {
@@ -110,6 +111,7 @@ export const Table = (props: TableProps) => {
   }
   const subPage = page.slice(startIndex, endIndex);
   const selectedRowIndex = props.selectedRowIndex;
+  const selectedRowIndices = props.selectedRowIndices || [];
   const tableSizes = TABLE_SIZES[props.compactMode || CompactModeTypes.DEFAULT];
   /* Subtracting 9px to handling widget padding */
   return (
@@ -149,7 +151,11 @@ export const Table = (props: TableProps) => {
       />
       <div className={props.isLoading ? Classes.SKELETON : "tableWrap"}>
         <div {...getTableProps()} className="table">
-          <div onMouseOver={props.disableDrag} onMouseLeave={props.enableDrag}>
+          <div
+            onMouseOver={props.disableDrag}
+            onMouseLeave={props.enableDrag}
+            className="thead"
+          >
             {headerGroups.map((headerGroup: any, index: number) => (
               <div
                 {...headerGroup.getHeaderGroupProps()}
@@ -201,11 +207,20 @@ export const Table = (props: TableProps) => {
                   {...row.getRowProps()}
                   className={
                     "tr" +
-                    `${row.index === selectedRowIndex ? " selected-row" : ""}`
+                    `${
+                      row.index === selectedRowIndex ||
+                      selectedRowIndices.includes(row.index)
+                        ? " selected-row"
+                        : ""
+                    }`
                   }
                   onClick={() => {
                     row.toggleRowSelected();
-                    props.selectTableRow(row, row.index === selectedRowIndex);
+                    props.selectTableRow(
+                      row,
+                      row.index === selectedRowIndex ||
+                        selectedRowIndices.includes(row.index),
+                    );
                   }}
                   key={rowIndex}
                 >

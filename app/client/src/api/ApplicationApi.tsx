@@ -1,6 +1,8 @@
 import Api from "./Api";
 import { ApiResponse } from "./ApiResponses";
 import { AxiosPromise } from "axios";
+import { AppColorCode } from "constants/DefaultTheme";
+import { AppIconName } from "components/ads/AppIcon";
 
 export interface PublishApplicationRequest {
   applicationId: string;
@@ -12,7 +14,7 @@ export interface ChangeAppViewAccessRequest {
 }
 
 export interface PublishApplicationResponse extends ApiResponse {
-  data: {};
+  data: unknown;
 }
 
 export interface ApplicationPagePayload {
@@ -44,6 +46,8 @@ export interface CreateApplicationResponse extends ApiResponse {
 export interface CreateApplicationRequest {
   name: string;
   orgId: string;
+  color?: AppColorCode;
+  icon?: AppIconName;
 }
 
 export interface SetDefaultPageRequest {
@@ -55,16 +59,39 @@ export interface DeleteApplicationRequest {
   applicationId: string;
 }
 
+export interface DuplicateApplicationRequest {
+  applicationId: string;
+}
+
 export interface GetAllApplicationResponse extends ApiResponse {
   data: Array<ApplicationResponsePayload & { pages: ApplicationPagePayload[] }>;
 }
 
+export type UpdateApplicationPayload = {
+  icon?: string;
+  color?: string;
+  name?: string;
+  currentApp?: boolean;
+};
+
+export type UpdateApplicationRequest = UpdateApplicationPayload & {
+  id: string;
+};
+
 export interface ApplicationObject {
   id: string;
   name: string;
+  icon?: string;
+  color?: string;
   organizationId: string;
   pages: ApplicationPagePayload[];
   userPermissions: string[];
+}
+
+export interface UserRoles {
+  name: string;
+  roleName: string;
+  username: string;
 }
 
 export interface OrganizationApplicationObject {
@@ -73,6 +100,7 @@ export interface OrganizationApplicationObject {
     id: string;
     name: string;
   };
+  userRoles: Array<UserRoles>;
 }
 export interface FetchUsersApplicationsOrgsResponse extends ApiResponse {
   data: {
@@ -113,13 +141,19 @@ class ApplicationApi extends Api {
     return Api.get(ApplicationApi.baseURL + applicationId);
   }
 
+  static fetchApplicationForViewMode(
+    applicationId: string,
+  ): AxiosPromise<FetchApplicationsResponse> {
+    return Api.get(ApplicationApi.baseURL + `view/${applicationId}`);
+  }
+
   static createApplication(
     request: CreateApplicationRequest,
   ): AxiosPromise<PublishApplicationResponse> {
     return Api.post(
       ApplicationApi.baseURL +
         ApplicationApi.createApplicationPath(request.orgId),
-      { name: request.name },
+      { name: request.name, color: request.color, icon: request.icon },
     );
   }
 
@@ -139,10 +173,23 @@ class ApplicationApi extends Api {
     );
   }
 
+  static updateApplication(
+    request: UpdateApplicationRequest,
+  ): AxiosPromise<ApiResponse> {
+    const { id, ...rest } = request;
+    return Api.put(ApplicationApi.baseURL + id, rest);
+  }
+
   static deleteApplication(
     request: DeleteApplicationRequest,
   ): AxiosPromise<ApiResponse> {
     return Api.delete(ApplicationApi.baseURL + request.applicationId);
+  }
+
+  static duplicateApplication(
+    request: DuplicateApplicationRequest,
+  ): AxiosPromise<ApiResponse> {
+    return Api.post(ApplicationApi.baseURL + "clone/" + request.applicationId);
   }
 }
 

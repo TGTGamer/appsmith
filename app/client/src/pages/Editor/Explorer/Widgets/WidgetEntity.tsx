@@ -16,17 +16,20 @@ import {
 import { useWidgetSelection } from "utils/hooks/dragResizeHooks";
 import { AppState } from "reducers";
 import { getWidgetIcon } from "../ExplorerIcons";
-import EntityProperty, { EntityPropertyProps } from "../Entity/EntityProperty";
-import { entityDefinitions } from "utils/autocomplete/EntityDefinitions";
-import { isFunction, noop } from "lodash";
+
+import { noop } from "lodash";
 import WidgetContextMenu from "./WidgetContextMenu";
 import { updateWidgetName } from "actions/propertyPaneActions";
+import { ENTITY_TYPE } from "entities/DataTree/dataTreeFactory";
+import EntityProperties from "../Entity/EntityProperties";
+import { CanvasStructure } from "reducers/uiReducers/pageCanvasStructure";
+import CurrentPageEntityProperties from "../Entity/CurrentPageEntityProperties";
 
 export type WidgetTree = WidgetProps & { children?: WidgetTree[] };
 
 const UNREGISTERED_WIDGETS: WidgetType[] = [WidgetTypes.ICON_WIDGET];
 
-const navigateToCanvas = (
+export const navigateToCanvas = (
   params: ExplorerURLParams,
   currentPath: string,
   widgetPageId: string,
@@ -83,97 +86,104 @@ const useWidget = (
   return { navigateToWidget, isWidgetSelected };
 };
 
-export const getWidgetProperies = (
-  widgetProps: any,
-  step: number,
-): Array<EntityPropertyProps> => {
-  let config: any =
-    entityDefinitions[
-      widgetProps.type as Exclude<
-        Partial<WidgetType>,
-        "CANVAS_WIDGET" | "ICON_WIDGET"
-      >
-    ];
-
-  if (isFunction(config)) config = config(widgetProps);
-
-  return Object.keys(config)
-    .filter(k => k.indexOf("!") === -1)
-    .map(widgetProperty => {
-      return {
-        propertyName: widgetProperty,
-        entityName: widgetProps.widgetName,
-        value: widgetProps[widgetProperty],
-        step,
-      };
-    });
-};
-
 export type WidgetEntityProps = {
-  widgetProps: WidgetTree;
+  widgetId: string;
+  widgetName: string;
+  widgetType: WidgetType;
   step: number;
   pageId: string;
-  children: ReactNode;
+  childWidgets?: CanvasStructure[];
   parentModalId?: string;
   searchKeyword?: string;
   isDefaultExpanded?: boolean;
 };
 
 export const WidgetEntity = memo((props: WidgetEntityProps) => {
-  const params = useParams<ExplorerURLParams>();
+  const { pageId } = useParams<ExplorerURLParams>();
+  const widgetsToExpand = useSelector(
+    (state: AppState) => state.ui.widgetDragResize.selectedWidgetAncestory,
+  );
+  let shouldExpand = false;
+  if (widgetsToExpand.includes(props.widgetId)) shouldExpand = true;
   const { navigateToWidget, isWidgetSelected } = useWidget(
-    props.widgetProps.widgetId,
-    props.widgetProps.type,
+    props.widgetId,
+    props.widgetType,
     props.pageId,
     props.parentModalId,
   );
 
-  if (UNREGISTERED_WIDGETS.indexOf(props.widgetProps.type) > -1)
+  if (UNREGISTERED_WIDGETS.indexOf(props.widgetType) > -1)
     return <React.Fragment />;
-
-  let children: ReactNode = props.children;
-  if (!props.children) {
-    children = getWidgetProperies(
-      props.widgetProps,
-      props.step + 1,
-    ).map((widgetProperty: EntityPropertyProps) => (
-      <EntityProperty {...widgetProperty} key={widgetProperty.propertyName} />
-    ));
-  }
 
   const contextMenu = (
     <WidgetContextMenu
-      widgetId={props.widgetProps.widgetId}
-      parentId={props.widgetProps.parentId}
+      widgetId={props.widgetId}
+      pageId={props.pageId}
       className={EntityClassNames.CONTEXT_MENU}
     />
   );
 
   return (
     <Entity
-      key={props.widgetProps.widgetId}
+      key={props.widgetId}
       className="widget"
-      icon={getWidgetIcon(props.widgetProps.type)}
-      name={props.widgetProps.widgetName}
-      action={navigateToWidget}
       active={isWidgetSelected}
-      entityId={props.widgetProps.widgetId}
+      action={navigateToWidget}
+      icon={getWidgetIcon(props.widgetType)}
+      name={props.widgetName}
+      entityId={props.widgetId}
       step={props.step}
-      updateEntityName={
-        props.pageId === params?.pageId ? updateWidgetName : noop
-      }
+      updateEntityName={props.pageId === pageId ? updateWidgetName : noop}
       searchKeyword={props.searchKeyword}
       isDefaultExpanded={
-        (!!props.searchKeyword && !!props.widgetProps.children) ||
+        shouldExpand ||
+        (!!props.searchKeyword && !!props.childWidgets) ||
         !!props.isDefaultExpanded
       }
-      contextMenu={props.pageId === params?.pageId && contextMenu}
+      contextMenu={props.pageId === pageId && contextMenu}
     >
-      {children}
+      {props.childWidgets &&
+        props.childWidgets.length > 0 &&
+        props.childWidgets.map(child => (
+          <WidgetEntity
+            step={props.step + 1}
+            widgetId={child.widgetId}
+            widgetName={child.widgetName}
+            widgetType={child.type}
+            childWidgets={child.children}
+            key={child.widgetId}
+            searchKeyword={props.searchKeyword}
+            pageId={props.pageId}
+          />
+        ))}
+      {!(props.childWidgets && props.childWidgets.length > 0) &&
+        pageId === props.pageId && (
+          <CurrentPageEntityProperties
+            key={props.widgetId}
+            entityType={ENTITY_TYPE.WIDGET}
+            entityName={props.widgetName}
+            step={props.step + 1}
+          />
+        )}
+      {!(props.childWidgets && props.childWidgets.length > 0) &&
+        pageId !== props.pageId && (
+          <EntityProperties
+            key={props.widgetId}
+            entityType={ENTITY_TYPE.WIDGET}
+            entityName={props.widgetName}
+            step={props.step + 1}
+            pageId={props.pageId}
+            entityId={props.widgetId}
+          />
+        )}
     </Entity>
   );
 });
 
 WidgetEntity.displayName = "WidgetEntity";
+
+(WidgetEntity as any).whyDidYouRender = {
+  logOnDifferentValues: false,
+};
 
 export default WidgetEntity;

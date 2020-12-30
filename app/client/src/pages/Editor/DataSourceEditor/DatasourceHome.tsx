@@ -3,10 +3,8 @@ import styled from "styled-components";
 import { connect } from "react-redux";
 import { initialize } from "redux-form";
 import { Card, Spinner } from "@blueprintjs/core";
-import {
-  getDatasourcePlugins,
-  getPluginImages,
-} from "selectors/entitiesSelector";
+import { getDBPlugins, getPluginImages } from "selectors/entitiesSelector";
+import history from "utils/history";
 import { Plugin } from "api/PluginApi";
 import { DATASOURCE_DB_FORM } from "constants/forms";
 import {
@@ -16,11 +14,12 @@ import {
 import { AppState } from "reducers";
 import AnalyticsUtil from "utils/AnalyticsUtil";
 import { getCurrentApplication } from "selectors/applicationSelectors";
-import { UserApplication } from "constants/userConstants";
 import CenteredWrapper from "components/designSystems/appsmith/CenteredWrapper";
+import { ApplicationPayload } from "constants/ReduxActionConstants";
+import { QUERY_EDITOR_URL_WITH_SELECTED_PAGE_ID } from "constants/routes";
+import BackButton from "./BackButton";
 
 const DatasourceHomePage = styled.div`
-  font-size: 20px;
   padding: 20px;
   margin-left: 10px;
   max-height: 95vh;
@@ -113,18 +112,19 @@ interface ReduxDispatchProps {
 
 interface ReduxStateProps {
   plugins: Plugin[];
-  currentApplication: UserApplication;
+  currentApplication?: ApplicationPayload;
   pluginImages: Record<string, string>;
 }
 
 type Props = ReduxStateProps & DatasourceHomeScreenProps & ReduxDispatchProps;
 
 class DatasourceHomeScreen extends React.Component<Props> {
-  goToCreateDatasource = (pluginId: string) => {
+  goToCreateDatasource = (pluginId: string, pluginName: string) => {
     const { currentApplication } = this.props;
 
     AnalyticsUtil.logEvent("CREATE_DATA_SOURCE_CLICK", {
-      appName: currentApplication.name,
+      appName: currentApplication?.name,
+      plugin: pluginName,
     });
 
     this.props.selectPlugin(pluginId);
@@ -134,10 +134,27 @@ class DatasourceHomeScreen extends React.Component<Props> {
   };
 
   render() {
-    const { plugins, isSaving, pluginImages } = this.props;
+    const {
+      plugins,
+      isSaving,
+      pluginImages,
+      applicationId,
+      pageId,
+    } = this.props;
 
     return (
       <DatasourceHomePage>
+        <BackButton
+          onClick={() =>
+            history.push(
+              QUERY_EDITOR_URL_WITH_SELECTED_PAGE_ID(
+                applicationId,
+                pageId,
+                pageId,
+              ),
+            )
+          }
+        />
         <StyledContainer>
           <p className="sectionHeadings">Select Datasource Type</p>
         </StyledContainer>
@@ -154,7 +171,9 @@ class DatasourceHomeScreen extends React.Component<Props> {
                     interactive={false}
                     className="eachDatasourceCard"
                     key={plugin.id}
-                    onClick={() => this.goToCreateDatasource(plugin.id)}
+                    onClick={() =>
+                      this.goToCreateDatasource(plugin.id, plugin.name)
+                    }
                   >
                     <img
                       src={pluginImages[plugin.id]}
@@ -176,7 +195,7 @@ class DatasourceHomeScreen extends React.Component<Props> {
 const mapStateToProps = (state: AppState): ReduxStateProps => {
   return {
     pluginImages: getPluginImages(state),
-    plugins: getDatasourcePlugins(state),
+    plugins: getDBPlugins(state),
     currentApplication: getCurrentApplication(state),
   };
 };

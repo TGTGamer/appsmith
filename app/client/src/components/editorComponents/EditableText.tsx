@@ -8,7 +8,8 @@ import _ from "lodash";
 import Edit from "assets/images/EditPen.svg";
 import ErrorTooltip from "./ErrorTooltip";
 import { Colors } from "constants/Colors";
-import { AppToaster } from "components/editorComponents/ToastComponent";
+import { Toaster } from "components/ads/Toast";
+import { Variant } from "components/ads/common";
 
 export enum EditInteractionKind {
   SINGLE,
@@ -74,14 +75,15 @@ const EditableTextWrapper = styled.div<{
 
 const TextContainer = styled.div<{ isValid: boolean; minimal: boolean }>`
   display: flex;
-  &&&& .bp3-editable-text {
+  &&&& .${Classes.EDITABLE_TEXT} {
     ${props => (!props.minimal ? "border-radius: 3px;" : "")}
     ${props =>
       !props.minimal
         ? `border-color: ${props.isValid ? Colors.HIT_GRAY : "red"}`
         : ""};
-    ${props =>
-      props.minimal ? `border-bottom: 1px solid ${Colors.HIT_GRAY}` : ""}
+    & .${Classes.EDITABLE_TEXT_CONTENT} {
+      text-decoration: ${props => (props.minimal ? "underline" : "none")};
+    }
   }
 `;
 
@@ -110,9 +112,9 @@ export const EditableText = (props: EditableTextProps) => {
       props.onTextChanged(_value);
       setIsEditing(false);
     } else {
-      AppToaster.show({
-        message: "Invalid name",
-        type: "error",
+      Toaster.show({
+        text: "Invalid name",
+        variant: Variant.danger,
       });
     }
   };

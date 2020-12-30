@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { FieldArray, WrappedFieldArrayProps } from "redux-form";
 import styled from "styled-components";
 import { Icon } from "@blueprintjs/core";
@@ -20,6 +20,15 @@ const FormRowWithLabel = styled(FormRow)`
 `;
 
 const KeyValueRow = (props: Props & WrappedFieldArrayProps) => {
+  useEffect(() => {
+    // Always maintain 2 rows
+    if (props.fields.length < 2 && props.pushFields) {
+      for (let i = props.fields.length; i < 2; i += 1) {
+        props.fields.push({ key: "", value: "" });
+      }
+    }
+  }, [props.fields, props.pushFields]);
+
   return (
     <React.Fragment>
       {props.fields.length && (
@@ -130,6 +139,8 @@ const KeyValueRow = (props: Props & WrappedFieldArrayProps) => {
 type Props = {
   name: string;
   label: string;
+  // TODO(Hetu): Fix the banned type here
+  // eslint-disable-next-line @typescript-eslint/ban-types
   rightIcon?: Function;
   description?: string;
   actionConfig?: any;

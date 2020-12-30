@@ -11,6 +11,10 @@ export type Org = {
   id: string;
   name: string;
   website?: string;
+  email?: string;
+  logoUrl?: string;
+  uploadProgress?: number;
+  userPermissions?: string[];
 };
 
 export type OrgUser = {

@@ -4,21 +4,26 @@ import com.appsmith.external.models.ActionConfiguration;
 import com.appsmith.external.models.DatasourceConfiguration;
 import com.appsmith.external.models.Policy;
 import com.appsmith.server.constants.FieldName;
-import com.appsmith.server.domains.Action;
 import com.appsmith.server.domains.Application;
+import com.appsmith.server.domains.ApplicationPage;
 import com.appsmith.server.domains.Datasource;
+import com.appsmith.server.domains.Layout;
+import com.appsmith.server.domains.NewAction;
+import com.appsmith.server.domains.NewPage;
 import com.appsmith.server.domains.Organization;
-import com.appsmith.server.domains.Page;
 import com.appsmith.server.domains.Plugin;
 import com.appsmith.server.domains.User;
+import com.appsmith.server.dtos.ActionDTO;
 import com.appsmith.server.dtos.ApplicationAccessDTO;
 import com.appsmith.server.dtos.OrganizationApplicationsDTO;
+import com.appsmith.server.dtos.PageDTO;
 import com.appsmith.server.dtos.UserHomepageDTO;
 import com.appsmith.server.exceptions.AppsmithError;
 import com.appsmith.server.exceptions.AppsmithException;
 import com.appsmith.server.helpers.MockPluginExecutor;
 import com.appsmith.server.helpers.PluginExecutorHelper;
-import com.appsmith.server.repositories.PageRepository;
+import com.appsmith.server.repositories.ApplicationRepository;
+import com.appsmith.server.repositories.NewPageRepository;
 import com.appsmith.server.solutions.ApplicationFetcher;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -38,8 +43,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.appsmith.server.acl.AclPermission.EXECUTE_ACTIONS;
 import static com.appsmith.server.acl.AclPermission.EXECUTE_DATASOURCES;
@@ -66,16 +74,10 @@ public class ApplicationServiceTest {
     ApplicationPageService applicationPageService;
 
     @Autowired
-    PageService pageService;
-
-    @Autowired
     UserService userService;
 
     @Autowired
     OrganizationService organizationService;
-
-    @Autowired
-    PageRepository pageRepository;
 
     @Autowired
     DatasourceService datasourceService;
@@ -84,13 +86,22 @@ public class ApplicationServiceTest {
     PluginService pluginService;
 
     @Autowired
-    ActionService actionService;
+    NewActionService newActionService;
 
     @MockBean
     PluginExecutorHelper pluginExecutorHelper;
 
     @Autowired
     ApplicationFetcher applicationFetcher;
+
+    @Autowired
+    NewPageService newPageService;
+
+    @Autowired
+    NewPageRepository newPageRepository;
+
+    @Autowired
+    ApplicationRepository applicationRepository;
 
     String orgId;
 
@@ -147,9 +158,10 @@ public class ApplicationServiceTest {
     public void defaultPageCreateOnCreateApplicationTest() {
         Application testApplication = new Application();
         testApplication.setName("ApplicationServiceTest TestAppForTestingPage");
-        Flux<Page> pagesFlux = applicationPageService
+        Flux<PageDTO> pagesFlux = applicationPageService
                 .createApplication(testApplication, orgId)
-                .flatMapMany(application -> pageService.findByApplicationId(application.getId(), READ_PAGES));
+                // Fetch the unpublished pages by applicationId
+                .flatMapMany(application -> newPageService.findByApplicationId(application.getId(), READ_PAGES, false));
 
         Policy managePagePolicy = Policy.builder().permission(MANAGE_PAGES.getValue())
                 .users(Set.of("api_user"))
@@ -326,14 +338,24 @@ public class ApplicationServiceTest {
                     //In case of anonymous user, we should have errored out. Assert that the user is not anonymous.
                     assertThat(userHomepageDTO.getUser().getIsAnonymous()).isFalse();
 
-                    List<OrganizationApplicationsDTO> organizationApplications = userHomepageDTO.getOrganizationApplications();
+                    List<OrganizationApplicationsDTO> organizationApplicationsDTOs = userHomepageDTO.getOrganizationApplications();
 
-                    OrganizationApplicationsDTO orgAppDto = organizationApplications.get(0);
-                    assertThat(orgAppDto.getOrganization().getUserPermissions().contains("read:organizations"));
+                    assertThat(organizationApplicationsDTOs.size() > 0);
 
-                    Application application = orgAppDto.getApplications().get(0);
-                    assertThat(application.getUserPermissions()).contains("read:applications");
-                    assertThat(application.isAppIsExample()).isFalse();
+                    for (OrganizationApplicationsDTO organizationApplicationDTO : organizationApplicationsDTOs) {
+                        if (organizationApplicationDTO.getOrganization().getName().equals("Spring Test Organization")) {
+                            assertThat(organizationApplicationDTO.getOrganization().getUserPermissions().contains("read:organizations"));
+
+                            Application application = organizationApplicationDTO.getApplications().get(0);
+                            assertThat(application.getUserPermissions()).contains("read:applications");
+                            assertThat(application.isAppIsExample()).isFalse();
+
+                            assertThat(organizationApplicationDTO.getUserRoles().get(0).getRole().getName()).isEqualTo("Administrator");
+                            log.debug(organizationApplicationDTO.getUserRoles().toString());
+                        }
+                    }
+
+
                 })
                 .verifyComplete();
 
@@ -396,17 +418,17 @@ public class ApplicationServiceTest {
                 .changeViewAccess(createdApplication.getId(), applicationAccessDTO)
                 .cache();
 
-        Mono<Page> pageMono = publicAppMono
+        Mono<PageDTO> pageMono = publicAppMono
                 .flatMap(app -> {
                     String pageId = app.getPages().get(0).getId();
-                    return pageRepository.findById(pageId);
+                    return newPageService.findPageById(pageId, READ_PAGES, false);
                 });
 
         StepVerifier
                 .create(Mono.zip(publicAppMono, pageMono))
                 .assertNext(tuple -> {
                     Application publicApp = tuple.getT1();
-                    Page page = tuple.getT2();
+                    PageDTO page = tuple.getT2();
 
                     assertThat(publicApp.getIsPublic()).isTrue();
                     assertThat(publicApp.getPolicies()).containsAll(Set.of(manageAppPolicy, readAppPolicy));
@@ -451,17 +473,17 @@ public class ApplicationServiceTest {
                 })
                 .cache();
 
-        Mono<Page> pageMono = privateAppMono
+        Mono<PageDTO> pageMono = privateAppMono
                 .flatMap(app -> {
                     String pageId = app.getPages().get(0).getId();
-                    return pageRepository.findById(pageId);
+                    return newPageService.findPageById(pageId, READ_PAGES, false);
                 });
 
         StepVerifier
                 .create(Mono.zip(privateAppMono, pageMono))
                 .assertNext(tuple -> {
                     Application app = tuple.getT1();
-                    Page page = tuple.getT2();
+                    PageDTO page = tuple.getT2();
 
                     assertThat(app.getIsPublic()).isFalse();
                     assertThat(app.getPolicies()).containsAll(Set.of(manageAppPolicy, readAppPolicy));
@@ -515,7 +537,7 @@ public class ApplicationServiceTest {
 
         Datasource savedDatasource = datasourceService.create(datasource).block();
 
-        Action action = new Action();
+        ActionDTO action = new ActionDTO();
         action.setName("Public App Test action");
         action.setPageId(pageId);
         action.setDatasource(savedDatasource);
@@ -523,7 +545,7 @@ public class ApplicationServiceTest {
         actionConfiguration.setHttpMethod(HttpMethod.GET);
         action.setActionConfiguration(actionConfiguration);
 
-        Action savedAction = actionService.create(action).block();
+        ActionDTO savedAction = newActionService.createAction(action).block();
 
         ApplicationAccessDTO applicationAccessDTO = new ApplicationAccessDTO();
         applicationAccessDTO.setPublicAccess(true);
@@ -535,14 +557,14 @@ public class ApplicationServiceTest {
         Mono<Datasource> datasourceMono = publicAppMono
                 .then(datasourceService.findById(savedDatasource.getId()));
 
-        Mono<Action> actionMono = publicAppMono
-                .then(actionService.findById(savedAction.getId()));
+        Mono<NewAction> actionMono = publicAppMono
+                .then(newActionService.findById(savedAction.getId()));
 
         StepVerifier
                 .create(Mono.zip(datasourceMono, actionMono))
                 .assertNext(tuple -> {
                     Datasource datasource1 = tuple.getT1();
-                    Action action1 = tuple.getT2();
+                    NewAction action1 = tuple.getT2();
 
                     // Check that the datasource used in the app contains public execute permission
                     assertThat(datasource1.getPolicies()).containsAll(Set.of(manageDatasourcePolicy, readDatasourcePolicy, executeDatasourcePolicy));
@@ -554,4 +576,388 @@ public class ApplicationServiceTest {
                 .verifyComplete();
     }
 
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void createCloneApplication() {
+        Application testApplication = new Application();
+        testApplication.setName("ApplicationServiceTest Clone Source TestApp");
+
+        Mono<Application> testApplicationMono = applicationPageService.createApplication(testApplication, orgId)
+                .cache();
+
+        Mono<Application> applicationMono = testApplicationMono
+                .flatMap(application -> applicationPageService.cloneApplication(application.getId()))
+                .cache();
+
+        Policy manageAppPolicy = Policy.builder().permission(MANAGE_APPLICATIONS.getValue())
+                .users(Set.of("api_user"))
+                .build();
+        Policy readAppPolicy = Policy.builder().permission(READ_APPLICATIONS.getValue())
+                .users(Set.of("api_user"))
+                .build();
+
+        Mono<List<PageDTO>> pageListMono = applicationMono
+                .flatMapMany(application -> Flux.fromIterable(application.getPages()))
+                .flatMap(applicationPage -> newPageService.findPageById(applicationPage.getId(), READ_PAGES, false))
+                .collectList();
+
+        Policy managePagePolicy = Policy.builder().permission(MANAGE_PAGES.getValue())
+                .users(Set.of("api_user"))
+                .build();
+        Policy readPagePolicy = Policy.builder().permission(READ_PAGES.getValue())
+                .users(Set.of("api_user"))
+                .build();
+
+        StepVerifier
+                .create(Mono.zip(applicationMono, pageListMono))
+                .assertNext(tuple -> {
+                    Application application = tuple.getT1();
+                    List<PageDTO> pageList = tuple.getT2();
+                    assertThat(application).isNotNull();
+                    assertThat(application.isAppIsExample()).isFalse();
+                    assertThat(application.getId()).isNotNull();
+                    assertThat(application.getName().equals("ApplicationServiceTest Clone Source TestApp Copy"));
+                    assertThat(application.getPolicies()).containsAll(Set.of(manageAppPolicy, readAppPolicy));
+                    assertThat(application.getOrganizationId().equals(orgId));
+                    List<ApplicationPage> pages = application.getPages();
+                    Set<String> pageIdsFromApplication = pages.stream().map(page -> page.getId()).collect(Collectors.toSet());
+                    Set<String> pageIdsFromDb = pageList.stream().map(page -> page.getId()).collect(Collectors.toSet());
+
+                    assertThat(pageIdsFromApplication.containsAll(pageIdsFromDb));
+
+                    assertThat(pageList).isNotEmpty();
+                    for (PageDTO page : pageList) {
+                        assertThat(page.getPolicies()).containsAll(Set.of(managePagePolicy, readPagePolicy));
+                        assertThat(page.getApplicationId()).isEqualTo(application.getId());
+                    }
+                })
+                .verifyComplete();
+
+        // verify that Pages are cloned
+
+        Mono<List<NewPage>> testPageListMono = testApplicationMono
+                .flatMapMany(application -> Flux.fromIterable(application.getPages()))
+                .flatMap(applicationPage -> newPageRepository.findById(applicationPage.getId()))
+                .collectList();
+
+        Mono<List<String>> pageIdListMono = pageListMono
+                .flatMapMany(Flux::fromIterable)
+                .map(PageDTO::getId)
+                .collectList();
+
+        Mono<List<String>> testPageIdListMono = testPageListMono
+                .flatMapMany(Flux::fromIterable)
+                .map(NewPage::getId)
+                .collectList();
+
+        StepVerifier
+                .create(Mono.zip(pageIdListMono, testPageIdListMono))
+                .assertNext(tuple -> {
+                    List<String> pageIdList = tuple.getT1();
+                    List<String> testPageIdList = tuple.getT2();
+
+                    assertThat(pageIdList).doesNotContainAnyElementsOf(testPageIdList);
+                })
+                .verifyComplete();
+
+        // verify that cloned Pages are not renamed
+
+        Mono<List<String>> pageNameListMono = pageListMono
+                .flatMapMany(Flux::fromIterable)
+                .map(PageDTO::getName)
+                .collectList();
+
+        Mono<List<String>> testPageNameListMono = testPageListMono
+                .flatMapMany(Flux::fromIterable)
+                .map(newPage -> newPage.getUnpublishedPage().getName())
+                .collectList();
+
+        StepVerifier
+                .create(Mono.zip(pageNameListMono, testPageNameListMono))
+                .assertNext(tuple -> {
+                    List<String> pageNameList = tuple.getT1();
+                    List<String> testPageNameList = tuple.getT2();
+
+                    assertThat(pageNameList).containsExactlyInAnyOrderElementsOf(testPageNameList);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void basicPublishApplicationTest() {
+        Application testApplication = new Application();
+        String appName = "ApplicationServiceTest Publish Application";
+        testApplication.setName(appName);
+        Mono<Application> applicationMono = applicationPageService.createApplication(testApplication, orgId)
+                .flatMap(application -> applicationPageService.publish(application.getId()))
+                .then(applicationService.findByName(appName, MANAGE_APPLICATIONS))
+                .cache();
+
+        Mono<List<NewPage>> applicationPagesMono = applicationMono
+                .map(application -> application.getPages())
+                .flatMapMany(Flux::fromIterable)
+                .flatMap(applicationPage -> newPageService.findById(applicationPage.getId(), READ_PAGES))
+                .collectList();
+
+        StepVerifier
+                .create(Mono.zip(applicationMono, applicationPagesMono))
+                .assertNext(tuple -> {
+                    Application application = tuple.getT1();
+                    List<NewPage> pages = tuple.getT2();
+
+                    assertThat(application).isNotNull();
+                    assertThat(application.isAppIsExample()).isFalse();
+                    assertThat(application.getId()).isNotNull();
+                    assertThat(application.getName().equals(appName));
+                    assertThat(application.getPages().size()).isEqualTo(1);
+                    assertThat(application.getPublishedPages().size()).isEqualTo(1);
+
+                    assertThat(pages.size()).isEqualTo(1);
+                    NewPage newPage = pages.get(0);
+                    assertThat(newPage.getUnpublishedPage().getName()).isEqualTo(newPage.getPublishedPage().getName());
+                    assertThat(newPage.getUnpublishedPage().getLayouts().get(0).getId()).isEqualTo(newPage.getPublishedPage().getLayouts().get(0).getId());
+                    assertThat(newPage.getUnpublishedPage().getLayouts().get(0).getDsl()).isEqualTo(newPage.getPublishedPage().getLayouts().get(0).getDsl());
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void deleteUnpublishedPageFromApplication() {
+        Application testApplication = new Application();
+        String appName = "ApplicationServiceTest Publish Application Delete Page";
+        testApplication.setName(appName);
+        Mono<Application> applicationMono = applicationPageService.createApplication(testApplication, orgId)
+                .flatMap(application -> {
+                    PageDTO page = new PageDTO();
+                    page.setName("New Page");
+                    page.setApplicationId(application.getId());
+                    Layout defaultLayout = newPageService.createDefaultLayout();
+                    List<Layout> layouts = new ArrayList<>();
+                    layouts.add(defaultLayout);
+                    page.setLayouts(layouts);
+                    return applicationPageService.createPage(page);
+                })
+                .flatMap(page -> applicationPageService.publish(page.getApplicationId()))
+                .then(applicationService.findByName(appName, MANAGE_APPLICATIONS))
+                .cache();
+
+        PageDTO newPage = applicationMono
+                .flatMap(application -> newPageService
+                        .findByNameAndApplicationIdAndViewMode("New Page", application.getId(), READ_PAGES, false)
+                        .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, "page")))
+                        .flatMap(page -> applicationPageService.deleteUnpublishedPage(page.getId()))).block();
+
+        ApplicationPage applicationPage = new ApplicationPage();
+        applicationPage.setId(newPage.getId());
+        applicationPage.setIsDefault(false);
+
+        StepVerifier
+                .create(applicationService.findById(newPage.getApplicationId(), MANAGE_APPLICATIONS))
+                .assertNext(editedApplication -> {
+
+                    List<ApplicationPage> publishedPages = editedApplication.getPublishedPages();
+                    assertThat(publishedPages).size().isEqualTo(2);
+                    assertThat(publishedPages).containsAnyOf(applicationPage);
+
+                    List<ApplicationPage> editedApplicationPages = editedApplication.getPages();
+                    assertThat(editedApplicationPages.size()).isEqualTo(1);
+                    assertThat(editedApplicationPages).doesNotContain(applicationPage);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void changeDefaultPageForAPublishedApplication() {
+        Application testApplication = new Application();
+        String appName = "ApplicationServiceTest Publish Application Change Default Page";
+        testApplication.setName(appName);
+        Mono<Application> applicationMono = applicationPageService.createApplication(testApplication, orgId)
+                .flatMap(application -> {
+                    PageDTO page = new PageDTO();
+                    page.setName("New Page");
+                    page.setApplicationId(application.getId());
+                    Layout defaultLayout = newPageService.createDefaultLayout();
+                    List<Layout> layouts = new ArrayList<>();
+                    layouts.add(defaultLayout);
+                    page.setLayouts(layouts);
+                    return applicationPageService.createPage(page);
+                })
+                .flatMap(page -> applicationPageService.publish(page.getApplicationId()))
+                .then(applicationService.findByName(appName, MANAGE_APPLICATIONS))
+                .cache();
+
+        PageDTO newPage = applicationMono
+                .flatMap(application -> newPageService
+                        .findByNameAndApplicationIdAndViewMode("New Page", application.getId(), READ_PAGES, false)
+                        .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, "unpublishedEditedPage")))).block();
+
+        Mono<Application> updatedDefaultPageApplicationMono = applicationMono
+                .flatMap(application -> applicationPageService.makePageDefault(application.getId(), newPage.getId()));
+
+        ApplicationPage unpublishedEditedPage = new ApplicationPage();
+        unpublishedEditedPage.setId(newPage.getId());
+        unpublishedEditedPage.setIsDefault(true);
+
+        ApplicationPage publishedEditedPage = new ApplicationPage();
+        publishedEditedPage.setId(newPage.getId());
+        publishedEditedPage.setIsDefault(false);
+
+        StepVerifier
+                .create(updatedDefaultPageApplicationMono)
+                .assertNext(editedApplication -> {
+
+                    List<ApplicationPage> publishedPages = editedApplication.getPublishedPages();
+                    assertThat(publishedPages).size().isEqualTo(2);
+                    assertThat(publishedPages).containsAnyOf(publishedEditedPage);
+
+                    List<ApplicationPage> editedApplicationPages = editedApplication.getPages();
+                    assertThat(editedApplicationPages.size()).isEqualTo(2);
+                    assertThat(editedApplicationPages).containsAnyOf(unpublishedEditedPage);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void getApplicationInViewMode() {
+        Application testApplication = new Application();
+        String appName = "ApplicationServiceTest Get Application In View Mode";
+        testApplication.setName(appName);
+        Mono<Application> applicationMono = applicationPageService.createApplication(testApplication, orgId)
+                .flatMap(application -> {
+                    PageDTO page = new PageDTO();
+                    page.setName("New Page");
+                    page.setApplicationId(application.getId());
+                    Layout defaultLayout = newPageService.createDefaultLayout();
+                    List<Layout> layouts = new ArrayList<>();
+                    layouts.add(defaultLayout);
+                    page.setLayouts(layouts);
+                    return applicationPageService.createPage(page);
+                })
+                .flatMap(page -> applicationPageService.publish(page.getApplicationId()))
+                .then(applicationService.findByName(appName, MANAGE_APPLICATIONS))
+                .cache();
+
+        PageDTO newPage = applicationMono
+                .flatMap(application -> newPageService
+                        .findByNameAndApplicationIdAndViewMode("New Page", application.getId(), READ_PAGES, false)
+                        .switchIfEmpty(Mono.error(new AppsmithException(AppsmithError.NO_RESOURCE_FOUND, "page")))
+                        .flatMap(page -> applicationPageService.deleteUnpublishedPage(page.getId()))).block();
+
+        Mono<Application> viewModeApplicationMono = applicationMono
+                .flatMap(application -> applicationService.getApplicationInViewMode(application.getId()));
+
+        ApplicationPage applicationPage = new ApplicationPage();
+        applicationPage.setId(newPage.getId());
+        applicationPage.setIsDefault(false);
+
+        StepVerifier
+                .create(viewModeApplicationMono)
+                .assertNext(viewApplication -> {
+                    List<ApplicationPage> editedApplicationPages = viewApplication.getPages();
+                    assertThat(editedApplicationPages.size()).isEqualTo(2);
+                    assertThat(editedApplicationPages).containsAnyOf(applicationPage);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void validCloneApplicationWhenCancelledMidWay() {
+        Mockito.when(pluginExecutorHelper.getPluginExecutor(Mockito.any())).thenReturn(Mono.just(new MockPluginExecutor()));
+
+        Application testApplication = new Application();
+        String appName = "ApplicationServiceTest Clone Application Midway Cancellation";
+        testApplication.setName(appName);
+
+        Application originalApplication = applicationPageService.createApplication(testApplication, orgId)
+                .block();
+
+        String pageId = originalApplication.getPages().get(0).getId();
+
+        Plugin plugin = pluginService.findByName("Installed Plugin Name").block();
+        Datasource datasource = new Datasource();
+        datasource.setName("Cloned App Test");
+        datasource.setPluginId(plugin.getId());
+        DatasourceConfiguration datasourceConfiguration = new DatasourceConfiguration();
+        datasourceConfiguration.setUrl("http://test.com");
+        datasource.setDatasourceConfiguration(datasourceConfiguration);
+        datasource.setOrganizationId(orgId);
+
+        Datasource savedDatasource = datasourceService.create(datasource).block();
+
+        ActionDTO action1 = new ActionDTO();
+        action1.setName("Clone App Test action1");
+        action1.setPageId(pageId);
+        action1.setDatasource(savedDatasource);
+        ActionConfiguration actionConfiguration = new ActionConfiguration();
+        actionConfiguration.setHttpMethod(HttpMethod.GET);
+        action1.setActionConfiguration(actionConfiguration);
+
+        ActionDTO savedAction1 = newActionService.createAction(action1).block();
+
+        ActionDTO action2 = new ActionDTO();
+        action2.setName("Clone App Test action2");
+        action2.setPageId(pageId);
+        action2.setDatasource(savedDatasource);
+        action2.setActionConfiguration(actionConfiguration);
+
+        ActionDTO savedAction2 = newActionService.createAction(action2).block();
+
+        ActionDTO action3 = new ActionDTO();
+        action3.setName("Clone App Test action3");
+        action3.setPageId(pageId);
+        action3.setDatasource(savedDatasource);
+        action3.setActionConfiguration(actionConfiguration);
+
+        ActionDTO savedAction3 = newActionService.createAction(action3).block();
+
+
+        // Trigger the clone of application now.
+        applicationPageService.cloneApplication(originalApplication.getId())
+                .timeout(Duration.ofMillis(10))
+                .subscribe();
+
+        Mono<Application> clonedAppFromDbMono = Mono.just(originalApplication)
+                .flatMap(originalApp -> {
+                    try {
+                        // Before fetching the cloned application, sleep for 5 seconds to ensure that the cloning finishes
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    return applicationRepository.findByClonedFromApplicationId(originalApp.getId()).next();
+                })
+                .cache();
+
+        Mono<List<NewAction>> actionsMono = clonedAppFromDbMono
+                .flatMap(clonedAppFromDb -> newActionService
+                        .findAllByApplicationIdAndViewMode(clonedAppFromDb.getId(), false, READ_ACTIONS, null)
+                        .collectList()
+                );
+
+        Mono<List<PageDTO>> pagesMono = clonedAppFromDbMono
+                .flatMapMany(application -> Flux.fromIterable(application.getPages()))
+                .flatMap(applicationPage -> newPageService.findPageById(applicationPage.getId(), READ_PAGES, false))
+                .collectList();
+
+        StepVerifier
+                .create(Mono.zip(clonedAppFromDbMono, actionsMono, pagesMono))
+                .assertNext(tuple -> {
+                    Application cloneApp = tuple.getT1();
+                    List<NewAction> actions = tuple.getT2();
+                    List<PageDTO> pages = tuple.getT3();
+
+                    assertThat(cloneApp).isNotNull();
+                    assertThat(pages.get(0).getId()).isNotEqualTo(pageId);
+                    assertThat(actions.size()).isEqualTo(3);
+                    Set<String> actionNames = actions.stream().map(action -> action.getUnpublishedAction().getName()).collect(Collectors.toSet());
+                    assertThat(actionNames).containsExactlyInAnyOrder("Clone App Test action1", "Clone App Test action2", "Clone App Test action3");
+                })
+                .verifyComplete();
+
+    }
 }

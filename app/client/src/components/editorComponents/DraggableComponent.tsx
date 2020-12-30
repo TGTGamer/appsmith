@@ -1,7 +1,6 @@
 import React, { CSSProperties } from "react";
 import styled from "styled-components";
 import { WidgetProps } from "widgets/BaseWidget";
-import { ContainerWidgetProps } from "widgets/ContainerWidget";
 import { useDrag, DragSourceMonitor } from "react-dnd";
 import { WIDGET_PADDING } from "constants/WidgetConstants";
 import { useSelector } from "react-redux";
@@ -35,7 +34,7 @@ const WidgetBoundaries = styled.div`
   pointer-events: none;
 `;
 
-type DraggableComponentProps = ContainerWidgetProps<WidgetProps>;
+type DraggableComponentProps = WidgetProps;
 
 /* eslint-disable react/display-name */
 
@@ -177,6 +176,10 @@ const DraggableComponent = (props: DraggableComponentProps) => {
 
   const className = `${classNameForTesting}`;
 
+  const shouldRenderComponent = !(
+    selectedWidget === props.widgetId && isDragging
+  );
+
   return (
     <DraggableWrapper
       className={className}
@@ -185,7 +188,7 @@ const DraggableComponent = (props: DraggableComponentProps) => {
       onClick={handleClick}
       style={style}
     >
-      {props.children}
+      {shouldRenderComponent && props.children}
       {widgetBoundaries}
     </DraggableWrapper>
   );

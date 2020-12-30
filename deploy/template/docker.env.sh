@@ -1,10 +1,13 @@
-#!/bin/sh
+#!/bin/bash
 
-if [ ! -f docker-compose.yml ]; then
-    touch docker-compose.yml
-fi
+set -o nounset
 
-cat >| docker.env  << EOF
+encoded_mongo_root_user="$1"
+encoded_mongo_root_password="$2"
+mongo_host="$3"
+disable_telemetry="$4"
+
+cat << EOF
 # Read our documentation on how to configure these features
 # https://docs.appsmith.com/v/v1.1/enabling-3p-services
 
@@ -38,5 +41,17 @@ APPSMITH_MAIL_ENABLED=false
 # ******** Database *************
 APPSMITH_REDIS_URL=redis://redis:6379
 APPSMITH_MONGODB_URI=mongodb://$encoded_mongo_root_user:$encoded_mongo_root_password@$mongo_host/appsmith?retryWrites=true
+# *******************************
+
+# *** EE Specific Config ********
+# APPSMITH_MARKETPLACE_URL=
+# APPSMITH_RAPID_API_KEY_VALUE=
+# APPSMITH_ROLLBAR_ACCESS_TOKEN=
+# APPSMITH_ROLLBAR_ENV=
+# APPSMITH_SEGMENT_KEY=
+# *******************************
+
+# ******** ANALYTICS *************
+APPSMITH_DISABLE_TELEMETRY=$disable_telemetry
 # *******************************
 EOF

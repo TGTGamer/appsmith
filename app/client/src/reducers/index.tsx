@@ -1,6 +1,7 @@
 import { combineReducers } from "redux";
 import entityReducer from "./entityReducers";
 import uiReducer from "./uiReducers";
+import evaluationsReducer from "./evaluationReducers";
 import { reducer as formReducer } from "redux-form";
 import { CanvasWidgetsReduxState } from "./entityReducers/canvasWidgetsReducer";
 import { EditorReduxState } from "./uiReducers/editorReducer";
@@ -21,6 +22,7 @@ import { PluginDataState } from "reducers/entityReducers/pluginsReducer";
 import { AuthState } from "reducers/uiReducers/authReducer";
 import { OrgReduxState } from "reducers/uiReducers/orgReducer";
 import { UsersReduxState } from "reducers/uiReducers/usersReducer";
+import { ThemeState } from "reducers/uiReducers/themeReducer";
 import { WidgetDragResizeState } from "reducers/uiReducers/dragResizeReducer";
 import { ImportedCollectionsReduxState } from "reducers/uiReducers/importedCollectionsReducer";
 import { ProvidersReduxState } from "reducers/uiReducers/providerReducer";
@@ -29,12 +31,18 @@ import { ImportReduxState } from "reducers/uiReducers/importReducer";
 import { HelpReduxState } from "./uiReducers/helpReducer";
 import { ApiNameReduxState } from "./uiReducers/apiNameReducer";
 import { ExplorerReduxState } from "./uiReducers/explorerReducer";
-import { PageDSLsReduxState } from "./uiReducers/pageDSLReducer";
-import { AppDataState } from "@appsmith/reducers/entityReducers/appReducer";
+import { PageCanvasStructureReduxState } from "./uiReducers/pageCanvasStructure";
+import { ConfirmRunActionReduxState } from "./uiReducers/confirmRunActionReducer";
+import { AppDataState } from "reducers/entityReducers/appReducer";
+import { DatasourceNameReduxState } from "./uiReducers/datasourceNameReducer";
+import { EvaluatedTreeState } from "./evaluationReducers/treeReducer";
+import { EvaluationDependencyState } from "./evaluationReducers/dependencyReducer";
+import { PageWidgetsReduxState } from "./uiReducers/pageWidgetsReducer";
 
 const appReducer = combineReducers({
   entities: entityReducer,
   ui: uiReducer,
+  evaluations: evaluationsReducer,
   form: formReducer,
 });
 
@@ -61,7 +69,11 @@ export interface AppState {
     help: HelpReduxState;
     apiName: ApiNameReduxState;
     explorer: ExplorerReduxState;
-    pageDSLs: PageDSLsReduxState;
+    pageCanvasStructure: PageCanvasStructureReduxState;
+    pageWidgets: PageWidgetsReduxState;
+    confirmRunAction: ConfirmRunActionReduxState;
+    datasourceName: DatasourceNameReduxState;
+    theme: ThemeState;
   };
   entities: {
     canvasWidgets: CanvasWidgetsReduxState;
@@ -73,5 +85,9 @@ export interface AppState {
     plugins: PluginDataState;
     meta: MetaState;
     app: AppDataState;
+  };
+  evaluations: {
+    tree: EvaluatedTreeState;
+    dependencies: EvaluationDependencyState;
   };
 }

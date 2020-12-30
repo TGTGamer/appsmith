@@ -10,7 +10,6 @@ describe("Tab widget test", function() {
     cy.addDsl(dsl);
   });
   it("Tab Widget Functionality Test", function() {
-    cy.get(pages.widgetsEditor).click();
     cy.openPropertyPane("tabswidget");
     /**
      * @param{Text} Random Text
@@ -33,6 +32,7 @@ describe("Tab widget test", function() {
       .click({ force: true })
       .should("be.visible");
     cy.get(Layoutpage.tabButton).click({ force: true });
+    cy.wait(200);
     cy.tabVerify(2, "Day");
     cy.get(Layoutpage.tabDelete)
       .eq(2)
@@ -60,7 +60,6 @@ describe("Tab widget test", function() {
   });
   it("Tab Widget Functionality To Unchecked Visible Widget", function() {
     cy.get(publish.backToEditor).click();
-    cy.get(pages.widgetsEditor).click();
     cy.openPropertyPane("tabswidget");
     cy.togglebarDisable(commonlocators.visibleCheckbox);
     cy.PublishtheApp();
@@ -68,7 +67,6 @@ describe("Tab widget test", function() {
     cy.get(publish.backToEditor).click();
   });
   it("Tab Widget Functionality To Check Visible Widget", function() {
-    cy.get(pages.widgetsEditor).click();
     cy.openPropertyPane("tabswidget");
     cy.togglebar(commonlocators.visibleCheckbox);
     cy.PublishtheApp();

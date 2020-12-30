@@ -1,25 +1,31 @@
-import { FetchPageRequest } from "api/PageApi";
+import { FetchPageRequest, SavePageResponse } from "api/PageApi";
 import { WidgetOperation, WidgetProps } from "widgets/BaseWidget";
 import { WidgetType } from "constants/WidgetConstants";
 import {
-  ReduxActionTypes,
+  EvaluationReduxAction,
   ReduxAction,
+  ReduxActionTypes,
   UpdateCanvasPayload,
-  SavePageSuccessPayload,
-  FetchPageListPayload,
 } from "constants/ReduxActionConstants";
-import { FlattenedWidgetProps } from "reducers/entityReducers/canvasWidgetsReducer";
+import { CanvasWidgetsReduxState } from "reducers/entityReducers/canvasWidgetsReducer";
 import { ContainerWidgetProps } from "widgets/ContainerWidget";
 import AnalyticsUtil from "utils/AnalyticsUtil";
 import { APP_MODE, UrlDataState } from "reducers/entityReducers/appReducer";
 
+export interface FetchPageListPayload {
+  applicationId: string;
+  mode: APP_MODE;
+}
+
 export const fetchPageList = (
   applicationId: string,
+  mode: APP_MODE,
 ): ReduxAction<FetchPageListPayload> => {
   return {
     type: ReduxActionTypes.FETCH_PAGE_LIST_INIT,
     payload: {
       applicationId,
+      mode,
     },
   };
 };
@@ -33,9 +39,21 @@ export const fetchPage = (pageId: string): ReduxAction<FetchPageRequest> => {
   };
 };
 
-export const fetchPageSuccess = () => {
+export const fetchPublishedPage = (pageId: string, bustCache = false) => ({
+  type: ReduxActionTypes.FETCH_PUBLISHED_PAGE_INIT,
+  payload: {
+    pageId,
+    bustCache,
+  },
+});
+
+export const fetchPageSuccess = (
+  postEvalActions: ReduxAction<unknown>[],
+): EvaluationReduxAction<unknown> => {
   return {
     type: ReduxActionTypes.FETCH_PAGE_SUCCESS,
+    payload: {},
+    postEvalActions,
   };
 };
 
@@ -47,9 +65,11 @@ export type FetchPublishedPageSuccessPayload = {
 
 export const fetchPublishedPageSuccess = (
   payload: FetchPublishedPageSuccessPayload,
-) => ({
+  postEvalActions: ReduxAction<unknown>[],
+): EvaluationReduxAction<FetchPublishedPageSuccessPayload> => ({
   type: ReduxActionTypes.FETCH_PUBLISHED_PAGE_SUCCESS,
   payload,
+  postEvalActions,
 });
 
 export const updateCurrentPage = (id: string) => ({
@@ -66,7 +86,7 @@ export const updateCanvas = (
   };
 };
 
-export const savePageSuccess = (payload: SavePageSuccessPayload) => {
+export const savePageSuccess = (payload: SavePageResponse) => {
   return {
     type: ReduxActionTypes.SAVE_PAGE_SUCCESS,
     payload,
@@ -85,7 +105,7 @@ export const deletePageSuccess = () => {
   };
 };
 
-export const updateAndSaveLayout = (widgets: FlattenedWidgetProps) => {
+export const updateAndSaveLayout = (widgets: CanvasWidgetsReduxState) => {
   return {
     type: ReduxActionTypes.UPDATE_LAYOUT,
     payload: { widgets },
@@ -101,6 +121,30 @@ export const createPage = (applicationId: string, pageName: string) => {
     payload: {
       applicationId,
       name: pageName,
+    },
+  };
+};
+
+export const clonePageInit = (pageId: string) => {
+  return {
+    type: ReduxActionTypes.CLONE_PAGE_INIT,
+    payload: {
+      id: pageId,
+    },
+  };
+};
+
+export const clonePageSuccess = (
+  pageId: string,
+  pageName: string,
+  layoutId: string,
+) => {
+  return {
+    type: ReduxActionTypes.CLONE_PAGE_SUCCESS,
+    payload: {
+      pageId,
+      pageName,
+      layoutId,
     },
   };
 };
@@ -149,8 +193,10 @@ export type WidgetRemoveChild = {
 };
 
 export type WidgetDelete = {
-  widgetId: string;
-  parentId: string;
+  widgetId?: string;
+  parentId?: string;
+  disallowUndo?: boolean;
+  isShortcut?: boolean;
 };
 
 export type WidgetResize = {
@@ -161,12 +207,28 @@ export type WidgetResize = {
   bottomRow: number;
 };
 
+export type WidgetAddChildren = {
+  widgetId: string;
+  children: Array<{
+    type: WidgetType;
+    widgetId: string;
+    parentId: string;
+    parentRowSpace: number;
+    parentColumnSpace: number;
+    leftColumn: number;
+    rightColumn: number;
+    topRow: number;
+    bottomRow: number;
+    isLoading: boolean;
+  }>;
+};
+
 export const updateWidget = (
   operation: WidgetOperation,
   widgetId: string,
   payload: any,
 ): ReduxAction<
-  WidgetAddChild | WidgetMove | WidgetRemoveChild | WidgetResize | WidgetDelete
+  WidgetAddChild | WidgetMove | WidgetResize | WidgetDelete | WidgetAddChildren
 > => {
   return {
     type: ReduxActionTypes["WIDGET_" + operation],
@@ -186,6 +248,15 @@ export const setUrlData = (
 export const setAppMode = (payload: APP_MODE): ReduxAction<APP_MODE> => {
   return {
     type: ReduxActionTypes.SET_APP_MODE,
+    payload,
+  };
+};
+
+export const updateAppStore = (
+  payload: Record<string, unknown>,
+): ReduxAction<Record<string, unknown>> => {
+  return {
+    type: ReduxActionTypes.UPDATE_APP_STORE,
     payload,
   };
 };

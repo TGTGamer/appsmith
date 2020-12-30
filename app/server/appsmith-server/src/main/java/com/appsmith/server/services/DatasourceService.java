@@ -1,11 +1,13 @@
 package com.appsmith.server.services;
 
+import com.appsmith.external.models.AuthenticationDTO;
 import com.appsmith.external.models.DatasourceTestResult;
 import com.appsmith.server.acl.AclPermission;
 import com.appsmith.server.domains.Datasource;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Set;
 
 public interface DatasourceService extends CrudService<Datasource, String> {
@@ -26,4 +28,7 @@ public interface DatasourceService extends CrudService<Datasource, String> {
 
     Flux<Datasource> findAllByOrganizationId(String organizationId, AclPermission readDatasources);
 
+    Flux<Datasource> saveAll(List<Datasource> datasourceList);
+
+    AuthenticationDTO encryptAuthenticationFields(AuthenticationDTO authentication);
 }

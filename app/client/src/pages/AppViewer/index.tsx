@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import styled from "styled-components";
 import { connect } from "react-redux";
-import { withRouter, RouteComponentProps } from "react-router";
+import { withRouter, RouteComponentProps, Route } from "react-router";
 import { Switch } from "react-router-dom";
 import { AppState } from "reducers";
 import {
@@ -21,8 +21,11 @@ import {
   resetChildrenMetaProperty,
   updateWidgetMetaProperty,
 } from "actions/metaActions";
-import AppRoute from "pages/common/AppRoute";
 import { editorInitializer } from "utils/EditorUtils";
+import * as Sentry from "@sentry/react";
+import log from "loglevel";
+
+const SentryRoute = Sentry.withSentryRouting(Route);
 
 const AppViewerBody = styled.section`
   display: flex;
@@ -33,8 +36,9 @@ const AppViewerBody = styled.section`
 `;
 
 export type AppViewerProps = {
-  initializeAppViewer: Function;
+  initializeAppViewer: (applicationId: string, pageId?: string) => void;
   isInitialized: boolean;
+  isInitializeError: boolean;
   executeAction: (actionPayload: ExecuteActionPayload) => void;
   updateWidgetProperty: (
     widgetId: string,
@@ -60,9 +64,10 @@ class AppViewer extends Component<
     editorInitializer().then(() => {
       this.setState({ registered: true });
     });
-    const { applicationId } = this.props.match.params;
-    if (this.props.match.params.applicationId) {
-      this.props.initializeAppViewer(applicationId);
+    const { applicationId, pageId } = this.props.match.params;
+    log.debug({ applicationId, pageId });
+    if (applicationId) {
+      this.props.initializeAppViewer(applicationId, pageId);
     }
   }
 
@@ -83,12 +88,10 @@ class AppViewer extends Component<
         <AppViewerBody>
           {isInitialized && this.state.registered && (
             <Switch>
-              <AppRoute
+              <SentryRoute
                 path={getApplicationViewerPageURL()}
                 exact
                 component={AppViewerPageContainer}
-                name={"AppViewerPageContainer"}
-                logDisable
               />
             </Switch>
           )}
@@ -126,13 +129,14 @@ const mapDispatchToProps = (dispatch: any) => ({
     dispatch(updateWidgetMetaProperty(widgetId, propertyName, propertyValue)),
   resetChildrenMetaProperty: (widgetId: string) =>
     dispatch(resetChildrenMetaProperty(widgetId)),
-  initializeAppViewer: (applicationId: string) =>
+  initializeAppViewer: (applicationId: string, pageId?: string) => {
     dispatch({
       type: ReduxActionTypes.INITIALIZE_PAGE_VIEWER,
-      payload: { applicationId },
-    }),
+      payload: { applicationId, pageId },
+    });
+  },
 });
 
 export default withRouter(
-  connect(mapStateToProps, mapDispatchToProps)(AppViewer),
+  connect(mapStateToProps, mapDispatchToProps)(Sentry.withProfiler(AppViewer)),
 );
