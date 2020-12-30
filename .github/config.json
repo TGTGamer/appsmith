@@ -15,7 +15,7 @@
     {
       "root": ".",
       "projectType": "other",
-      "versioning": "SemVer",
+      "versioning": "other",
       "prereleaseName": "alpha",
       "issue": {
         "labels": {
