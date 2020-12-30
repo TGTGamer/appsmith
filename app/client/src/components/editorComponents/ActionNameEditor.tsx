@@ -6,10 +6,12 @@ import styled from "styled-components";
 import EditableText, {
   EditInteractionKind,
 } from "components/editorComponents/EditableText";
-import { convertToCamelCase } from "utils/helpers";
+import { removeSpecialChars, isNameValid } from "utils/helpers";
 import { AppState } from "reducers";
 import { RestAction } from "entities/Action";
 import { Page } from "constants/ReduxActionConstants";
+import { getDataTree } from "selectors/dataTreeSelectors";
+import { getExistingPageNames } from "sagas/selectors";
 
 import { saveActionName } from "actions/actionActions";
 import { Spinner } from "@blueprintjs/core";
@@ -23,8 +25,8 @@ const ApiNameWrapper = styled.div`
   & > div {
     max-width: 100%;
     flex: 0 1 auto;
-    font-size: ${props => props.theme.fontSizes[5]}px;
-    font-weight: ${props => props.theme.fontWeights[2]};
+    font-size: ${(props) => props.theme.fontSizes[5]}px;
+    font-weight: ${(props) => props.theme.fontWeights[2]};
   }
 `;
 
@@ -39,22 +41,21 @@ export const ActionNameEditor = () => {
   }
 
   const actions: RestAction[] = useSelector((state: AppState) =>
-    state.entities.actions.map(action => action.config),
-  );
-
-  const existingPageNames: string[] = useSelector((state: AppState) =>
-    state.entities.pageList.pages.map((page: Page) => page.pageName),
+    state.entities.actions.map((action) => action.config),
   );
 
   const currentActionConfig: RestAction | undefined = actions.find(
-    action => action.id === params.apiId || action.id === params.queryId,
+    (action) => action.id === params.apiId || action.id === params.queryId,
   );
 
   const existingWidgetNames: string[] = useSelector((state: AppState) =>
     Object.values(state.entities.canvasWidgets).map(
-      widget => widget.widgetName,
+      (widget) => widget.widgetName,
     ),
   );
+
+  const evalTree = useSelector(getDataTree);
+  const existingPageNames = useSelector(getExistingPageNames);
 
   const saveStatus: {
     isSaving: boolean;
@@ -68,12 +69,7 @@ export const ActionNameEditor = () => {
   });
 
   const hasActionNameConflict = useCallback(
-    (name: string) =>
-      !(
-        existingPageNames.indexOf(name) === -1 &&
-        actions.findIndex(action => action.name === name) === -1 &&
-        existingWidgetNames.indexOf(name) === -1
-      ),
+    (name: string) => !isNameValid(name, { ...existingPageNames, ...evalTree }),
     [existingPageNames, actions, existingWidgetNames],
   );
 
@@ -128,7 +124,7 @@ export const ActionNameEditor = () => {
           forceDefault={forceUpdate}
           onTextChanged={handleAPINameChange}
           isInvalid={isInvalidActionName}
-          valueTransform={convertToCamelCase}
+          valueTransform={removeSpecialChars}
           isEditingDefault={isNew}
           updating={saveStatus.isSaving}
           editInteractionKind={EditInteractionKind.SINGLE}

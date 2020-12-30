@@ -37,9 +37,17 @@ export const RichtextEditorComponent = (
   useEffect(() => {
     if (
       editorInstance !== null &&
-      props.defaultValue !== editorContent.current
+      (editorContent.current.length === 0 ||
+        editorContent.current !== props.defaultValue)
     ) {
-      editorInstance.setContent(props.defaultValue, { format: "html" });
+      setTimeout(() => {
+        const content = props.defaultValue
+          ? props.defaultValue.replace(/\n/g, "<br/>")
+          : props.defaultValue;
+        editorInstance.setContent(content, {
+          format: "html",
+        });
+      }, 200);
     }
   }, [props.defaultValue]);
   useEffect(() => {
@@ -47,9 +55,11 @@ export const RichtextEditorComponent = (
       editorContent.current = content;
       props.onValueChange(content);
     }, 200);
+    const selector = `textarea#rte-${props.widgetId}`;
     (window as any).tinyMCE.init({
+      forced_root_block: false,
       height: "100%",
-      selector: `textarea#rte-${props.widgetId}`,
+      selector: selector,
       menubar: false,
       branding: false,
       resize: false,
@@ -57,7 +67,10 @@ export const RichtextEditorComponent = (
         editor.mode.set(props.isDisabled === true ? "readonly" : "design");
         // Without timeout default value is not set on browser refresh.
         setTimeout(() => {
-          editor.setContent(props.defaultValue, { format: "html" });
+          const content = props.defaultValue
+            ? props.defaultValue.replace(/\n/g, "<br/>")
+            : props.defaultValue;
+          editor.setContent(content, { format: "html" });
         }, 300);
         editor
           .on("Change", () => {
@@ -84,7 +97,8 @@ export const RichtextEditorComponent = (
     });
 
     return () => {
-      editorInstance !== null && editorInstance.destroy();
+      (window as any).tinyMCE.EditorManager.remove(selector);
+      editorInstance !== null && editorInstance.remove();
     };
   }, []);
   return (

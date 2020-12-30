@@ -1,4 +1,5 @@
 import { Datasource } from "api/DatasourcesApi";
+import { DynamicPath } from "../../utils/DynamicBindingUtils";
 
 export enum PluginType {
   API = "API",
@@ -62,7 +63,7 @@ export interface Action {
   pluginId: string;
   pluginType: PluginType;
   executeOnLoad: boolean;
-  dynamicBindingPathList: Property[];
+  dynamicBindingPathList: DynamicPath[];
   isValid: boolean;
   invalids: string[];
   jsonPathKeys: string[];
@@ -71,10 +72,12 @@ export interface Action {
   providerId?: string;
   provider?: ActionProvider;
   documentation?: { text: string };
+  confirmBeforeExecute?: boolean;
 }
 
 export interface RestAction extends Action {
   actionConfiguration: Partial<ApiActionConfig>;
+  eventData?: any;
 }
 
 export interface RapidApiAction extends Action {
@@ -88,4 +91,5 @@ export interface RapidApiAction extends Action {
 
 export interface QueryAction extends Action {
   actionConfiguration: Partial<QueryActionConfig>;
+  eventData?: any;
 }

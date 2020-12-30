@@ -13,6 +13,7 @@ import {
 } from "constants/WidgetConstants";
 
 import BaseWidget, { WidgetProps, WidgetState } from "./BaseWidget";
+import * as Sentry from "@sentry/react";
 
 class ContainerWidget extends BaseWidget<
   ContainerWidgetProps<WidgetProps>,
@@ -68,7 +69,7 @@ class ContainerWidget extends BaseWidget<
       // sort by row so stacking context is correct
       // TODO(abhinav): This is hacky. The stacking context should increase for widgets rendered top to bottom, always.
       // Figure out a way in which the stacking context is consistent.
-      _.sortBy(_.compact(this.props.children), child => child.topRow),
+      _.sortBy(_.compact(this.props.children), (child) => child.topRow),
       this.renderChildWidget,
     );
   };
@@ -98,3 +99,4 @@ export interface ContainerWidgetProps<T extends WidgetProps>
 }
 
 export default ContainerWidget;
+export const ProfiledContainerWidget = Sentry.withProfiler(ContainerWidget);

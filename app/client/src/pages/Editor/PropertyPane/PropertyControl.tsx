@@ -11,6 +11,10 @@ import { WidgetProps } from "widgets/BaseWidget";
 import { PropertyControlPropsType } from "components/propertyControls";
 import PropertyHelpLabel from "pages/Editor/PropertyPane/PropertyHelpLabel";
 import FIELD_EXPECTED_VALUE from "constants/FieldExpectedValue";
+import {
+  isPathADynamicProperty,
+  isPathADynamicTrigger,
+} from "../../../utils/DynamicBindingUtils";
 
 type Props = {
   widgetProperties: WidgetProps;
@@ -48,7 +52,7 @@ const PropertyControl = (props: Props) => {
   const { propertyName, label } = propertyConfig;
   if (widgetProperties) {
     const propertyValue = widgetProperties[propertyName];
-    const dataTreePath = `${widgetProperties.widgetName}.evaluatedValues.${propertyName}`;
+    const dataTreePath: any = `${widgetProperties.widgetName}.evaluatedValues.${propertyName}`;
     const evaluatedValue = _.get(
       widgetProperties,
       `evaluatedValues.${propertyName}`,
@@ -62,12 +66,11 @@ const PropertyControl = (props: Props) => {
       dataTreePath,
       evaluatedValue,
       widgetProperties: widgetProperties,
-      expected: FIELD_EXPECTED_VALUE[widgetProperties.type][propertyName],
+      expected: FIELD_EXPECTED_VALUE[widgetProperties.type][
+        propertyName
+      ] as any,
     };
-    if (
-      widgetProperties.dynamicTriggers &&
-      widgetProperties.dynamicTriggers[propertyName]
-    ) {
+    if (isPathADynamicTrigger(widgetProperties, propertyName)) {
       config.isValid = true;
       config.validationMessage = "";
       delete config.dataTreePath;
@@ -75,10 +78,9 @@ const PropertyControl = (props: Props) => {
       delete config.expected;
     }
 
-    const isDynamic: boolean = _.get(
+    const isDynamic: boolean = isPathADynamicProperty(
       widgetProperties,
-      ["dynamicProperties", propertyName],
-      false,
+      propertyName,
     );
     const isConvertible = !!propertyConfig.isJSConvertible;
     const className = propertyConfig.label
@@ -105,6 +107,7 @@ const PropertyControl = (props: Props) => {
               <JSToggleButton
                 active={isDynamic}
                 onClick={() => toggleDynamicProperty(propertyName, isDynamic)}
+                className={`t--js-toggle ${isDynamic ? "is-active" : ""}`}
               >
                 <ControlIcons.JS_TOGGLE />
               </JSToggleButton>

@@ -1,155 +1,216 @@
-import { all, call, put, select, take, takeLatest } from "redux-saga/effects";
+import { get } from "lodash";
+import {
+  all,
+  call,
+  put,
+  select,
+  take,
+  takeLatest,
+  race,
+} from "redux-saga/effects";
 import {
   InitializeEditorPayload,
-  Page,
   ReduxAction,
   ReduxActionErrorTypes,
   ReduxActionTypes,
 } from "constants/ReduxActionConstants";
+import { ERROR_CODES } from "constants/ApiConstants";
 
 import { fetchEditorConfigs } from "actions/configsActions";
-import { fetchPage, fetchPageList, setAppMode } from "actions/pageActions";
+import {
+  fetchPage,
+  fetchPageList,
+  fetchPublishedPage,
+  setAppMode,
+  updateAppStore,
+} from "actions/pageActions";
 import { fetchDatasources } from "actions/datasourceActions";
 import { fetchPlugins } from "actions/pluginActions";
 import { fetchActions, fetchActionsForView } from "actions/actionActions";
 import { fetchApplication } from "actions/applicationActions";
 import AnalyticsUtil from "utils/AnalyticsUtil";
 import { getCurrentApplication } from "selectors/applicationSelectors";
-import { AppState } from "reducers";
-import PageApi, { FetchPageResponse } from "api/PageApi";
-import { validateResponse } from "./ErrorSagas";
-import { extractCurrentDSL } from "utils/WidgetPropsUtils";
 import { APP_MODE } from "reducers/entityReducers/appReducer";
+import { getAppStore } from "constants/AppConstants";
+import { getDefaultPageId } from "./selectors";
+import { populatePageDSLsSaga } from "./PageSagas";
 
 function* initializeEditorSaga(
   initializeEditorAction: ReduxAction<InitializeEditorPayload>,
 ) {
   const { applicationId, pageId } = initializeEditorAction.payload;
-  // Step 1: Start getting all the data needed by the
-  yield all([
-    put(fetchPageList(applicationId)),
-    put(fetchEditorConfigs()),
-    put(fetchActions(applicationId)),
-    put(fetchPage(pageId)),
-    put(fetchApplication(applicationId)),
-  ]);
-  // Step 2: Wait for all data to be in the state
-  yield all([
-    take(ReduxActionTypes.FETCH_PAGE_LIST_SUCCESS),
-    take(ReduxActionTypes.FETCH_PAGE_SUCCESS),
-    take(ReduxActionTypes.SWITCH_CURRENT_PAGE_ID),
-    take(ReduxActionTypes.FETCH_ACTIONS_SUCCESS),
-  ]);
+  try {
+    yield put(setAppMode(APP_MODE.EDIT));
+    yield put({ type: ReduxActionTypes.START_EVALUATION });
+    yield all([
+      put(fetchPageList(applicationId, APP_MODE.EDIT)),
+      put(fetchEditorConfigs()),
+      put(fetchActions(applicationId)),
+      put(fetchPage(pageId)),
+      put(fetchApplication(applicationId, APP_MODE.EDIT)),
+    ]);
 
-  // Step 3: Call all the APIs which needs Organization Id from PageList API response.
-  yield all([put(fetchPlugins()), put(fetchDatasources())]);
+    const resultOfPrimaryCalls = yield race({
+      success: all([
+        take(ReduxActionTypes.FETCH_PAGE_LIST_SUCCESS),
+        take(ReduxActionTypes.FETCH_PAGE_SUCCESS),
+        take(ReduxActionTypes.FETCH_APPLICATION_SUCCESS),
+        take(ReduxActionTypes.FETCH_ACTIONS_SUCCESS),
+      ]),
+      failure: take([
+        ReduxActionErrorTypes.FETCH_PAGE_LIST_ERROR,
+        ReduxActionErrorTypes.FETCH_PAGE_ERROR,
+        ReduxActionErrorTypes.FETCH_APPLICATION_ERROR,
+        ReduxActionErrorTypes.FETCH_ACTIONS_ERROR,
+      ]),
+    });
 
-  // Step 4: Wait for all data to be in the state
-  yield all([
-    take(ReduxActionTypes.FETCH_PLUGINS_SUCCESS),
-    take(ReduxActionTypes.FETCH_DATASOURCES_SUCCESS),
-  ]);
+    if (resultOfPrimaryCalls.failure) {
+      yield put({
+        type: ReduxActionTypes.SAFE_CRASH_APPSMITH,
+        payload: {
+          code: get(
+            resultOfPrimaryCalls,
+            "failure.payload.error.code",
+            ERROR_CODES.SERVER_ERROR,
+          ),
+        },
+      });
+      return;
+    }
 
-  // Step 5: Set app mode
-  yield put(setAppMode(APP_MODE.EDIT));
+    yield all([put(fetchPlugins()), put(fetchDatasources())]);
 
-  const currentApplication = yield select(getCurrentApplication);
+    const resultOfSecondaryCalls = yield race({
+      success: all([
+        take(ReduxActionTypes.FETCH_PLUGINS_SUCCESS),
+        take(ReduxActionTypes.FETCH_DATASOURCES_SUCCESS),
+      ]),
+      failure: take([
+        ReduxActionErrorTypes.FETCH_PLUGINS_ERROR,
+        ReduxActionErrorTypes.FETCH_DATASOURCES_ERROR,
+      ]),
+    });
 
-  const appName = currentApplication ? currentApplication.name : "";
-  const appId = currentApplication ? currentApplication.id : "";
+    if (resultOfSecondaryCalls.failure) {
+      yield put({
+        type: ReduxActionTypes.SAFE_CRASH_APPSMITH,
+        payload: {
+          code: get(
+            resultOfPrimaryCalls,
+            "failure.payload.error.code",
+            ERROR_CODES.SERVER_ERROR,
+          ),
+        },
+      });
+      return;
+    }
 
-  AnalyticsUtil.logEvent("EDITOR_OPEN", {
-    appId: appId,
-    appName: appName,
-  });
+    yield put(updateAppStore(getAppStore(applicationId)));
 
-  // Step 6: Notify UI that the editor is ready to go
-  yield put({
-    type: ReduxActionTypes.INITIALIZE_EDITOR_SUCCESS,
-  });
+    const currentApplication = yield select(getCurrentApplication);
+
+    const appName = currentApplication ? currentApplication.name : "";
+    const appId = currentApplication ? currentApplication.id : "";
+
+    AnalyticsUtil.logEvent("EDITOR_OPEN", {
+      appId: appId,
+      appName: appName,
+    });
+
+    yield put({
+      type: ReduxActionTypes.INITIALIZE_EDITOR_SUCCESS,
+    });
+  } catch (e) {
+    yield put({
+      type: ReduxActionTypes.SAFE_CRASH_APPSMITH,
+      payload: {
+        code: ERROR_CODES.SERVER_ERROR,
+      },
+    });
+    return;
+  }
+
   yield call(populatePageDSLsSaga);
 }
 
-function* fetchPageDSLSaga(action: ReduxAction<{ pageId: string }>) {
-  try {
-    const fetchPageResponse: FetchPageResponse = yield call(PageApi.fetchPage, {
-      id: action.payload.pageId,
+export function* initializeAppViewerSaga(
+  action: ReduxAction<{ applicationId: string; pageId: string }>,
+) {
+  const { applicationId, pageId } = action.payload;
+  yield put(setAppMode(APP_MODE.PUBLISHED));
+  yield put({ type: ReduxActionTypes.START_EVALUATION });
+  yield all([
+    // TODO (hetu) Remove spl view call for fetch actions
+    put(fetchActionsForView(applicationId)),
+    put(fetchPageList(applicationId, APP_MODE.PUBLISHED)),
+    put(fetchApplication(applicationId, APP_MODE.PUBLISHED)),
+  ]);
+
+  const resultOfPrimaryCalls = yield race({
+    success: all([
+      take(ReduxActionTypes.FETCH_ACTIONS_VIEW_MODE_SUCCESS),
+      take(ReduxActionTypes.FETCH_PAGE_LIST_SUCCESS),
+      take(ReduxActionTypes.FETCH_APPLICATION_SUCCESS),
+    ]),
+    failure: take([
+      ReduxActionErrorTypes.FETCH_ACTIONS_VIEW_MODE_ERROR,
+      ReduxActionErrorTypes.FETCH_PAGE_LIST_ERROR,
+      ReduxActionErrorTypes.FETCH_APPLICATION_ERROR,
+    ]),
+  });
+
+  if (resultOfPrimaryCalls.failure) {
+    yield put({
+      type: ReduxActionTypes.SAFE_CRASH_APPSMITH,
+      payload: {
+        code: get(
+          resultOfPrimaryCalls,
+          "failure.payload.error.code",
+          ERROR_CODES.SERVER_ERROR,
+        ),
+      },
     });
-    const isValidResponse = yield validateResponse(fetchPageResponse);
-    if (isValidResponse) {
+    return;
+  }
+
+  yield put(updateAppStore(getAppStore(applicationId)));
+  const defaultPageId = yield select(getDefaultPageId);
+  const toLoadPageId = pageId || defaultPageId;
+
+  if (toLoadPageId) {
+    yield put(fetchPublishedPage(toLoadPageId, true));
+
+    const resultOfFetchPage = yield race({
+      success: take(ReduxActionTypes.FETCH_PUBLISHED_PAGE_SUCCESS),
+      failure: take(ReduxActionErrorTypes.FETCH_PUBLISHED_PAGE_ERROR),
+    });
+
+    if (resultOfFetchPage.failure) {
       yield put({
-        type: ReduxActionTypes.FETCH_PAGE_DSL_SUCCESS,
+        type: ReduxActionTypes.SAFE_CRASH_APPSMITH,
         payload: {
-          pageId: action.payload.pageId,
-          dsl: extractCurrentDSL(fetchPageResponse),
+          code: get(
+            resultOfFetchPage,
+            "failure.payload.error.code",
+            ERROR_CODES.SERVER_ERROR,
+          ),
         },
       });
+      return;
     }
-  } catch (error) {
-    yield put({
-      type: ReduxActionTypes.FETCH_PAGE_DSL_ERROR,
-      payload: {
-        pageId: action.payload.pageId,
-        error,
-        show: false,
-      },
-    });
-  }
-}
 
-export function* populatePageDSLsSaga() {
-  try {
-    yield put({
-      type: ReduxActionTypes.POPULATE_PAGEDSLS_INIT,
-    });
-    const pageIds: string[] = yield select((state: AppState) =>
-      state.entities.pageList.pages.map((page: Page) => page.pageId),
-    );
-    yield all(
-      pageIds.map((pageId: string) => {
-        return call(fetchPageDSLSaga, {
-          type: ReduxActionTypes.FETCH_PAGE_DSL_INIT,
-          payload: { pageId },
-        });
-      }),
-    );
-    yield put({
-      type: ReduxActionTypes.POPULATE_PAGEDSLS_SUCCESS,
-    });
-  } catch (error) {
-    yield put({
-      type: ReduxActionErrorTypes.POPULATE_PAGEDSLS_ERROR,
-      payload: {
-        error,
-      },
-    });
-  }
-}
+    yield put(setAppMode(APP_MODE.PUBLISHED));
+    yield put(updateAppStore(getAppStore(applicationId)));
 
-export function* initializeAppViewerSaga(
-  action: ReduxAction<{ pageId: string; applicationId: string }>,
-) {
-  const { applicationId } = action.payload;
-  yield all([
-    put(fetchActionsForView(applicationId)),
-    put(fetchPageList(applicationId)),
-    put(fetchApplication(applicationId)),
-  ]);
-
-  yield all([
-    take(ReduxActionTypes.FETCH_ACTIONS_VIEW_MODE_SUCCESS),
-    take(ReduxActionTypes.FETCH_PAGE_LIST_SUCCESS),
-  ]);
-
-  yield put(setAppMode(APP_MODE.PUBLISHED));
-
-  yield put({
-    type: ReduxActionTypes.INITIALIZE_PAGE_VIEWER_SUCCESS,
-  });
-  if ("serviceWorker" in navigator) {
     yield put({
-      type: ReduxActionTypes.FETCH_ALL_PUBLISHED_PAGES,
+      type: ReduxActionTypes.INITIALIZE_PAGE_VIEWER_SUCCESS,
     });
+    if ("serviceWorker" in navigator) {
+      yield put({
+        type: ReduxActionTypes.FETCH_ALL_PUBLISHED_PAGES,
+      });
+    }
   }
 }
 

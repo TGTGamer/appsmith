@@ -16,7 +16,6 @@ describe("Binding the Datepicker and Text Widget", function() {
     /**
      * Bind DatePicker1 to Text for "selectedDate"
      */
-    cy.get(pages.widgetsEditor).click();
     cy.openPropertyPane("textwidget");
     cy.testJsontext("text", "{{DatePicker1.selectedDate}}");
     cy.get(commonlocators.editPropCrossButton).click();
@@ -50,7 +49,6 @@ describe("Binding the Datepicker and Text Widget", function() {
   });
 
   it("DatePicker1-text: Change the date in DatePicker1 and Validate the same in text widget", function() {
-    cy.get(pages.widgetsEditor).click();
     cy.openPropertyPane("textwidget");
 
     /**
@@ -108,7 +106,6 @@ describe("Binding the Datepicker and Text Widget", function() {
     /**
      * Bind the DatePicker1 and DatePicker2 along with hard coded text to Text widget
      */
-    cy.get(pages.widgetsEditor).click();
     cy.openPropertyPane("textwidget");
     cy.testJsontext(
       "text",
@@ -118,6 +115,36 @@ describe("Binding the Datepicker and Text Widget", function() {
     cy.PublishtheApp();
     cy.get(commonlocators.labelTextStyle).should("contain.text", "DatePicker");
     cy.get(publishPage.backToEditor).click({ force: true });
+  });
+
+  it("Checks if on deselection of date triggers the onDateSelected action or not.", function() {
+    /**
+     * bind datepicker to show a message "Hello" on date selected
+     */
+    cy.openPropertyPane("datepickerwidget");
+    cy.get(commonlocators.onDateSelectedField).click();
+    cy.get(commonlocators.singleSelectMenuItem)
+      .contains("Show Message")
+      .click({ force: true });
+    cy.getAlert(commonlocators.optionchangetextDatePicker);
+
+    /**
+     * checking if on selecting the date triggers the message
+     */
+    cy.get(formWidgetsPage.datepickerWidget)
+      .first()
+      .click();
+    cy.SetDateToToday();
+    cy.get(commonlocators.toastmsg).contains("hello");
+
+    /**
+     * checking if on deselecting the date triggers the message or not.
+     * It should not trigger any message on deselection
+     */
+    cy.get(formWidgetsPage.datepickerFooter)
+      .contains("Clear")
+      .click();
+    cy.get(commonlocators.toastmsg).should("not.exist");
   });
 
   afterEach(() => {

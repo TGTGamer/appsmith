@@ -1,18 +1,11 @@
 import { bindingHint } from "components/editorComponents/CodeEditor/hintHelpers";
 import { MockCodemirrorEditor } from "../../../../test/__mocks__/CodeMirrorEditorMock";
-import RealmExecutor from "jsExecution/RealmExecutor";
-jest.mock("jsExecution/RealmExecutor");
 
 describe("hint helpers", () => {
-  beforeAll(() => {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-    // @ts-ignore
-    RealmExecutor.mockClear();
-  });
   describe("binding hint helper", () => {
     it("is initialized correctly", () => {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-      // @ts-ignore
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore: No types available
       const helper = bindingHint(MockCodemirrorEditor, {});
       expect(MockCodemirrorEditor.setOption).toBeCalled();
       expect(helper).toHaveProperty("showHint");
@@ -53,11 +46,11 @@ describe("hint helpers", () => {
         },
       ];
 
-      cases.forEach(testCase => {
+      cases.forEach((testCase) => {
         MockCodemirrorEditor.getValue.mockReturnValueOnce(testCase.value);
         MockCodemirrorEditor.getCursor.mockReturnValueOnce(testCase.cursor);
         if (testCase.getLine) {
-          testCase.getLine.forEach(line => {
+          testCase.getLine.forEach((line) => {
             MockCodemirrorEditor.getLine.mockReturnValueOnce(line);
           });
         }
@@ -65,20 +58,21 @@ describe("hint helpers", () => {
 
       // Test
       cases.forEach(() => {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-        // @ts-ignore
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore: No types available
         const helper = bindingHint(MockCodemirrorEditor, {});
-        // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-        // @ts-ignore
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore: No types available
         helper.showHint(MockCodemirrorEditor);
       });
 
       // Assert
-      const showHintCount = cases.filter(c => c.toCall === "showHint").length;
+      const showHintCount = cases.filter((c) => c.toCall === "showHint").length;
       expect(MockCodemirrorEditor.showHint).toHaveBeenCalledTimes(
         showHintCount,
       );
-      const closeHintCount = cases.filter(c => c.toCall === "closeHint").length;
+      const closeHintCount = cases.filter((c) => c.toCall === "closeHint")
+        .length;
       expect(MockCodemirrorEditor.closeHint).toHaveBeenCalledTimes(
         closeHintCount,
       );

@@ -31,11 +31,11 @@ import {
   getCurrentApplicationId,
   getPageList,
 } from "selectors/editorSelectors";
-import { AppToaster } from "components/editorComponents/ToastComponent";
-import { ToastType } from "react-toastify";
 import { ADD_API_TO_PAGE_SUCCESS_MESSAGE } from "constants/messages";
 import AnalyticsUtil from "utils/AnalyticsUtil";
 import { getCurrentOrgId } from "selectors/organizationSelectors";
+import { Toaster } from "components/ads/Toast";
+import { Variant } from "components/ads/common";
 
 export function* fetchProviderTemplatesSaga(
   action: ReduxActionWithPromise<FetchProviderTemplatesRequest>,
@@ -84,16 +84,16 @@ export function* addApiToPageSaga(
     if (isValidResponse) {
       const { payload } = action;
       const pageList: Page[] = yield select(getPageList);
-      const page = pageList.find(page => page.pageId === payload.pageId);
+      const page = pageList.find((page) => page.pageId === payload.pageId);
       AnalyticsUtil.logEvent("ADD_API_PAGE", {
         apiName: payload.name,
         providerName: payload.marketplaceElement.item.name,
         pageName: page?.pageName,
         source: payload.source,
       });
-      AppToaster.show({
-        message: ADD_API_TO_PAGE_SUCCESS_MESSAGE,
-        type: ToastType.SUCCESS,
+      Toaster.show({
+        text: ADD_API_TO_PAGE_SUCCESS_MESSAGE,
+        variant: Variant.success,
       });
       yield put({
         type: ReduxActionTypes.ADD_API_TO_PAGE_SUCCESS,

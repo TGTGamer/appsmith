@@ -1,7 +1,8 @@
-/* eslint-disable  @typescript-eslint/ban-ts-ignore */
+/* eslint-disable  @typescript-eslint/ban-ts-comment */
 import _ from "lodash";
 import { put, debounce, takeEvery, all } from "redux-saga/effects";
 import { ReduxAction, ReduxActionTypes } from "constants/ReduxActionConstants";
+import { batchActionSuccess } from "../actions/batchActions";
 
 const BATCH_PRIORITY = {
   [ReduxActionTypes.SET_META_PROP]: {
@@ -52,16 +53,17 @@ function* executeBatchSaga() {
   for (let priority = 0; priority < batches.length; priority++) {
     const batch = batches[priority];
     if (Array.isArray(batch) && batch.length) {
-      const needsSaga = batch.filter(b => BATCH_PRIORITY[b.type].needsSaga);
-      const canBatch = batch.filter(b => !BATCH_PRIORITY[b.type].needsSaga);
+      const needsSaga = batch.filter((b) => BATCH_PRIORITY[b.type].needsSaga);
+      const canBatch = batch.filter((b) => !BATCH_PRIORITY[b.type].needsSaga);
       batches[priority] = [];
-      // @ts-ignore
+      // @ts-ignore: No types available
       yield put(canBatch);
       if (needsSaga.length) {
         for (const sagaAction of needsSaga) {
           yield put(sagaAction);
         }
       }
+      yield put(batchActionSuccess(batch));
     }
   }
 }

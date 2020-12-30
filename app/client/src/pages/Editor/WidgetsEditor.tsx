@@ -18,6 +18,10 @@ import { getCanvasClassName } from "utils/generators";
 import { flashElementById } from "utils/helpers";
 import { useParams } from "react-router";
 import { fetchPage } from "actions/pageActions";
+import PerformanceTracker, {
+  PerformanceTransactionName,
+} from "utils/PerformanceTracker";
+import { getCurrentApplication } from "selectors/applicationSelectors";
 
 const EditorWrapper = styled.div`
   display: flex;
@@ -25,7 +29,7 @@ const EditorWrapper = styled.div`
   align-items: stretch;
   justify-content: flex-start;
   overflow: hidden;
-  height: calc(100vh - ${props => props.theme.headerHeight});
+  height: calc(100vh - ${(props) => props.theme.headerHeight});
 `;
 
 const CanvasContainer = styled.section`
@@ -46,6 +50,7 @@ const CanvasContainer = styled.section`
 
 /* eslint-disable react/display-name */
 const WidgetsEditor = () => {
+  PerformanceTracker.startTracking(PerformanceTransactionName.EDITOR_MOUNT);
   const { focusWidget, selectWidget } = useWidgetSelection();
   const params = useParams<{ applicationId: string; pageId: string }>();
   const dispatch = useDispatch();
@@ -54,6 +59,12 @@ const WidgetsEditor = () => {
   const isFetchingPage = useSelector(getIsFetchingPage);
   const currentPageId = useSelector(getCurrentPageId);
   const currentPageName = useSelector(getCurrentPageName);
+  const currentApp = useSelector(getCurrentApplication);
+
+  useEffect(() => {
+    PerformanceTracker.stopTracking(PerformanceTransactionName.EDITOR_MOUNT);
+    PerformanceTracker.stopTracking(PerformanceTransactionName.CLOSE_SIDE_PANE);
+  });
 
   // Switch page
   useEffect(() => {
@@ -68,6 +79,7 @@ const WidgetsEditor = () => {
       AnalyticsUtil.logEvent("PAGE_LOAD", {
         pageName: currentPageName,
         pageId: currentPageId,
+        appName: currentApp?.name,
         mode: "EDIT",
       });
     }
@@ -101,6 +113,7 @@ const WidgetsEditor = () => {
     node = <Canvas dsl={widgets} />;
   }
   log.debug("Canvas rendered");
+  PerformanceTracker.stopTracking();
   return (
     <EditorContextProvider>
       <EditorWrapper onClick={handleWrapperClick}>

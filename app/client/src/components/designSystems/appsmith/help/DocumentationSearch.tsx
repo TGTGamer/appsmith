@@ -23,7 +23,12 @@ import {
 import { Icon } from "@blueprintjs/core";
 import moment from "moment";
 
-const { algolia, appVersion, cloudHosting } = getAppsmithConfigs();
+const {
+  algolia,
+  appVersion,
+  cloudHosting,
+  intercomAppID,
+} = getAppsmithConfigs();
 const searchClient = algoliasearch(algolia.apiId, algolia.apiKey);
 
 const OenLinkIcon = HelpIcons.OPEN_LINK;
@@ -99,7 +104,7 @@ const Hit = (props: { hit: { path: string } }) => {
 
 const DefaultHelpMenuItem = (props: {
   item: { label: string; link?: string; id?: string; icon: React.ReactNode };
-  onSelect: Function;
+  onSelect: () => void;
 }) => {
   return (
     <li className="ais-Hits-item">
@@ -108,6 +113,11 @@ const DefaultHelpMenuItem = (props: {
         id={props.item.id}
         onClick={() => {
           if (props.item.link) window.open(props.item.link, "_blank");
+          if (props.item.id === "intercom-trigger") {
+            if (cloudHosting && intercomAppID && window.Intercom) {
+              window.Intercom("show");
+            }
+          }
           props.onSelect();
         }}
       >
@@ -280,7 +290,7 @@ const HelpFooter = styled.div`
 `;
 
 const HelpBody = styled.div`
-  padding-top: 60px;
+  padding-top: 68px;
   flex: 5;
 `;
 
@@ -333,8 +343,8 @@ class DocumentationSearch extends React.Component<Props, State> {
     };
   }
   onSearchValueChange = (event: SyntheticEvent<HTMLInputElement, Event>) => {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-    // @ts-ignore
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore: No types available
     const value = event.target.value;
     if (value === "" && this.state.showResults) {
       this.setState({
@@ -386,7 +396,7 @@ class DocumentationSearch extends React.Component<Props, State> {
                 <Hits hitComponent={Hit as any} />
               ) : (
                 <ul className="ais-Hits-list">
-                  {HELP_MENU_ITEMS.map(item => (
+                  {HELP_MENU_ITEMS.map((item) => (
                     <DefaultHelpMenuItem
                       key={item.label}
                       item={item}

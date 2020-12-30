@@ -1,6 +1,17 @@
 // Events
 import * as log from "loglevel";
 import FeatureFlag from "./featureFlags";
+import smartlookClient from "smartlook-client";
+import { getAppsmithConfigs } from "configs";
+import * as Sentry from "@sentry/react";
+import { ANONYMOUS_USERNAME, User } from "../constants/userConstants";
+import { sha256 } from "js-sha256";
+
+export type EventLocation =
+  | "LIGHTNING_MENU"
+  | "API_PANE"
+  | "QUERY_PANE"
+  | "QUERY_TEMPLATE";
 
 export type EventName =
   | "LOGIN_CLICK"
@@ -26,16 +37,13 @@ export type EventName =
   | "PUBLISH_APP"
   | "PREVIEW_APP"
   | "EDITOR_OPEN"
-  | "CREATE_API"
-  | "IMPORT_API"
-  | "IMPORT_API_CLICK"
+  | "CREATE_ACTION"
   | "SAVE_API"
   | "SAVE_API_CLICK"
   | "RUN_API"
   | "RUN_API_CLICK"
   | "DELETE_API"
   | "DELETE_API_CLICK"
-  | "DUPLICATE_API_CLICK"
   | "IMPORT_API"
   | "EXPAND_API"
   | "IMPORT_API_CLICK"
@@ -44,6 +52,7 @@ export type EventName =
   | "DUPLICATE_API"
   | "DUPLICATE_API_CLICK"
   | "RUN_QUERY"
+  | "RUN_QUERY_CLICK"
   | "DELETE_QUERY"
   | "SAVE_QUERY"
   | "MOVE_API"
@@ -56,6 +65,9 @@ export type EventName =
   | "CREATE_APP"
   | "CREATE_DATA_SOURCE_CLICK"
   | "SAVE_DATA_SOURCE"
+  | "SAVE_DATA_SOURCE_CLICK"
+  | "TEST_DATA_SOURCE_SUCCESS"
+  | "TEST_DATA_SOURCE_CLICK"
   | "CREATE_QUERY_CLICK"
   | "NAVIGATE"
   | "PAGE_LOAD"
@@ -63,20 +75,24 @@ export type EventName =
   | "PROPERTY_PANE_OPEN"
   | "PROPERTY_PANE_CLOSE"
   | "PROPERTY_PANE_OPEN_CLICK"
-  | "PROPERTY_PANE_CLOSE_CLICK";
-
-export type Gender = "MALE" | "FEMALE";
-export interface User {
-  userId: string;
-  name: string;
-  email: string;
-  gender: Gender;
-}
+  | "PROPERTY_PANE_CLOSE_CLICK"
+  | "WIDGET_DELETE_UNDO"
+  | "WIDGET_COPY_VIA_SHORTCUT"
+  | "WIDGET_COPY"
+  | "WIDGET_CUT_VIA_SHORTCUT"
+  | "WIDGET_PASTE"
+  | "WIDGET_DELETE_VIA_SHORTCUT"
+  | "OPEN_HELP"
+  | "INVITE_USER"
+  | "ROUTE_CHANGE"
+  | "PROPERTY_PANE_CLOSE_CLICK"
+  | "APPLICATIONS_PAGE_LOAD"
+  | "EXECUTE_ACTION";
 
 function getApplicationId(location: Location) {
   const pathSplit = location.pathname.split("/");
   const applicationsIndex = pathSplit.findIndex(
-    path => path === "applications",
+    (path) => path === "applications",
   );
   const appId = pathSplit[applicationsIndex + 1];
 
@@ -84,21 +100,11 @@ function getApplicationId(location: Location) {
 }
 
 class AnalyticsUtil {
-  static user: any = undefined;
-  static initializeHotjar(id: string, sv: string) {
-    (function init(h: any, o: any, t: any, j: any, a?: any, r?: any) {
-      h.hj =
-        h.hj ||
-        function() {
-          (h.hj.q = h.hj.q || []).push(arguments); //eslint-disable-line prefer-rest-params
-        };
-      h._hjSettings = { hjid: id, hjsv: sv };
-      a = o.getElementsByTagName("head")[0];
-      r = o.createElement("script");
-      r.async = 1;
-      r.src = t + h._hjSettings.hjid + j + h._hjSettings.hjsv;
-      a.appendChild(r);
-    })(window, document, "//static.hotjar.com/c/hotjar-", ".js?sv=");
+  static cachedAnonymoustId: string;
+  static cachedUserId: string;
+  static user?: User = undefined;
+  static initializeSmartLook(id: string) {
+    smartlookClient.init(id);
   }
 
   static initializeSegment(key: string) {
@@ -161,48 +167,103 @@ class AnalyticsUtil {
     })(window);
   }
 
-  static logEvent(eventName: EventName, eventData: any) {
+  static logEvent(eventName: EventName, eventData: any = {}) {
     const windowDoc: any = window;
     let finalEventData = eventData;
     const userData = AnalyticsUtil.user;
     const appId = getApplicationId(windowDoc.location);
     if (userData) {
+      const { segment } = getAppsmithConfigs();
       const app = (userData.applications || []).find(
         (app: any) => app.id === appId,
       );
-      finalEventData = {
-        ...finalEventData,
-        userData: {
-          userId: userData.id,
+      let user: any = {};
+      if (segment.enabled && segment.apiKey) {
+        user = {
+          userId: userData.username,
           email: userData.email,
           currentOrgId: userData.currentOrganizationId,
           appId: appId,
           appName: app ? app.name : undefined,
-        },
+          source: "cloud",
+        };
+      } else {
+        const userId = userData.username;
+        if (userId !== AnalyticsUtil.cachedUserId) {
+          AnalyticsUtil.cachedAnonymoustId = sha256(userId);
+          AnalyticsUtil.cachedUserId = userId;
+        }
+        user = {
+          userId: AnalyticsUtil.cachedAnonymoustId,
+          source: "ce",
+        };
+      }
+      finalEventData = {
+        ...eventData,
+        userData: user.userId === ANONYMOUS_USERNAME ? undefined : user,
       };
     }
     if (windowDoc.analytics) {
-      windowDoc.analytics.track(eventName, finalEventData);
-    } else {
       log.debug("Event fired", eventName, finalEventData);
+      windowDoc.analytics.track(eventName, finalEventData);
     }
   }
 
-  static identifyUser(userId: string, userData: User) {
+  static identifyUser(userData: User) {
+    const { segment, smartLook } = getAppsmithConfigs();
     const windowDoc: any = window;
-    AnalyticsUtil.user = userData;
+    const userId = userData.username;
     FeatureFlag.identify(userData);
     if (windowDoc.analytics) {
-      windowDoc.analytics.identify(userId, {
+      // This flag is only set on Appsmith Cloud. In this case, we get more detailed analytics of the user
+      if (segment.apiKey) {
+        const userProperties = {
+          email: userData.email,
+          name: userData.name,
+          userId: userId,
+          source: "cloud",
+        };
+        AnalyticsUtil.user = userData;
+        log.debug("Identify User " + userId);
+        windowDoc.analytics.identify(userId, userProperties);
+      } else if (segment.ceKey) {
+        // This is a self-hosted instance. Only send data if the analytics are NOT disabled by the user
+        // This is done by setting environment variable APPSMITH_DISABLE_TELEMETRY in the docker.env file
+        if (userId !== AnalyticsUtil.cachedUserId) {
+          AnalyticsUtil.cachedAnonymoustId = sha256(userId);
+          AnalyticsUtil.cachedUserId = userId;
+        }
+        const userProperties = {
+          userId: AnalyticsUtil.cachedUserId,
+          source: "ce",
+        };
+        log.debug(
+          "Identify Anonymous User " + AnalyticsUtil.cachedAnonymoustId,
+        );
+        windowDoc.analytics.identify(
+          AnalyticsUtil.cachedAnonymoustId,
+          userProperties,
+        );
+      }
+    }
+    Sentry.configureScope(function(scope) {
+      scope.setUser({
+        id: userId,
+        username: userData.username,
         email: userData.email,
-        name: userData.name,
-        userId: userId,
       });
+    });
+
+    if (smartLook.enabled) {
+      smartlookClient.identify(userId, { email: userData.email });
     }
   }
 
   static reset() {
     const windowDoc: any = window;
+    if (windowDoc.Intercom) {
+      windowDoc.Intercom("shutdown");
+    }
     windowDoc.analytics && windowDoc.analytics.reset();
     windowDoc.mixpanel && windowDoc.mixpanel.reset();
   }

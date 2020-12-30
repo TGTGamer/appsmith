@@ -7,33 +7,34 @@ import {
   getPluginPackageFromId,
   getPluginImages,
   getDatasource,
+  getPlugin,
 } from "selectors/entitiesSelector";
 import {
   updateDatasource,
   testDatasource,
   deleteDatasource,
   switchDatasource,
+  setDatsourceEditorMode,
 } from "actions/datasourceActions";
 import { DATASOURCE_DB_FORM } from "constants/forms";
 import DatasourceHome from "./DatasourceHome";
-import { getCurrentApplication } from "selectors/applicationSelectors";
 import DataSourceEditorForm from "./DBForm";
 import { Datasource } from "api/DatasourcesApi";
-import { UserApplication } from "constants/userConstants";
 import { RouteComponentProps } from "react-router";
 
 interface ReduxStateProps {
   formData: Datasource;
   selectedPluginPackage: string;
   isSaving: boolean;
-  currentApplication: UserApplication;
   isTesting: boolean;
-  formConfig: [];
+  formConfig: any[];
   loadingFormConfigs: boolean;
   isDeleting: boolean;
   newDatasource: string;
   pluginImages: Record<string, string>;
   pluginId: string;
+  viewMode: boolean;
+  pluginType: string;
 }
 
 type Props = ReduxStateProps &
@@ -83,6 +84,9 @@ class DataSourceEditor extends React.Component<Props> {
       newDatasource,
       pluginImages,
       pluginId,
+      viewMode,
+      setDatasourceEditorMode,
+      pluginType,
     } = this.props;
 
     return (
@@ -105,6 +109,9 @@ class DataSourceEditor extends React.Component<Props> {
             loadingFormConfigs={loadingFormConfigs}
             formConfig={formConfig}
             handleDelete={deleteDatasource}
+            viewMode={viewMode}
+            setDatasourceEditorMode={setDatasourceEditorMode}
+            pluginType={pluginType}
           />
         ) : (
           <DatasourceHome
@@ -126,22 +133,25 @@ const mapStateToProps = (state: AppState, props: any): ReduxStateProps => {
   const datasource = getDatasource(state, props.match.params.datasourceId);
   const { formConfigs, loadingFormConfigs } = plugins;
   const formData = getFormValues(DATASOURCE_DB_FORM)(state) as Datasource;
+  const pluginId = _.get(datasource, "pluginId", "");
+  const plugin = getPlugin(state, pluginId);
 
   return {
     pluginImages: getPluginImages(state),
     formData,
-    pluginId: _.get(datasource, "pluginId", ""),
+    pluginId,
     selectedPluginPackage: getPluginPackageFromId(
       state,
       datasourcePane.selectedPlugin,
     ),
     isSaving: datasources.loading,
     isDeleting: datasources.isDeleting,
-    currentApplication: getCurrentApplication(state),
     isTesting: datasources.isTesting,
-    formConfig: formConfigs[datasourcePane.selectedPlugin] || [],
+    formConfig: formConfigs[pluginId] || [],
     loadingFormConfigs,
     newDatasource: datasourcePane.newDatasource,
+    viewMode: datasourcePane.viewMode[datasource?.id ?? ""] ?? true,
+    pluginType: plugin?.type ?? "",
   };
 };
 
@@ -153,6 +163,8 @@ const mapDispatchToProps = (dispatch: any): DatasourcePaneFunctions => ({
   testDatasource: (data: Datasource) => dispatch(testDatasource(data)),
   deleteDatasource: (id: string) => dispatch(deleteDatasource({ id })),
   switchDatasource: (id: string) => dispatch(switchDatasource(id)),
+  setDatasourceEditorMode: (id: string, viewMode: boolean) =>
+    dispatch(setDatsourceEditorMode({ id, viewMode })),
 });
 
 export interface DatasourcePaneFunctions {
@@ -161,6 +173,7 @@ export interface DatasourcePaneFunctions {
   testDatasource: (data: Datasource) => void;
   deleteDatasource: (id: string) => void;
   switchDatasource: (id: string) => void;
+  setDatasourceEditorMode: (id: string, viewMode: boolean) => void;
 }
 
 export default connect(mapStateToProps, mapDispatchToProps)(DataSourceEditor);

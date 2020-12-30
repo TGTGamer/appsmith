@@ -17,12 +17,11 @@ export const HintStyles = createGlobalStyle<{ editorTheme: EditorTheme }>`
     font-size: 90%;
     font-family: monospace;
     max-height: 20em;
-    width: 250px;
     overflow-y: auto;
-    background: ${props =>
+    background: ${(props) =>
       props.editorTheme === EditorTheme.DARK ? "#090A0F" : "#ffffff"};
     border: 1px solid;
-    border-color: ${props =>
+    border-color: ${(props) =>
       props.editorTheme === EditorTheme.DARK ? "#535B62" : "#EBEFF2"}
     box-shadow: 0px 2px 4px rgba(67, 70, 74, 0.14);
     border-radius: 1px;
@@ -30,16 +29,26 @@ export const HintStyles = createGlobalStyle<{ editorTheme: EditorTheme }>`
 
   .CodeMirror-hint {
     height: 25px;
-    color: ${props =>
+    color: ${(props) =>
       props.editorTheme === EditorTheme.DARK ? "#F4F4F4" : "#1E242B"};
     cursor: pointer;
     display: flex;
+    width: 250px;
     align-items: center;
     font-size: 13px;
   }
 
+  .datasource-hint {
+    padding: 5px;
+    display: block;
+    width: 500px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; 
+  }
+
   li.CodeMirror-hint-active {
-    background: ${props =>
+    background: ${(props) =>
       props.editorTheme === EditorTheme.DARK
         ? "rgba(244,244,244,0.2)"
         : "rgba(128,136,141,0.2)"};
@@ -47,6 +56,12 @@ export const HintStyles = createGlobalStyle<{ editorTheme: EditorTheme }>`
   }
   .CodeMirror-Tern-completion {
     padding-left: 22px !important;
+    &:hover{
+      background: ${(props) =>
+        props.editorTheme === EditorTheme.DARK
+          ? "rgba(244,244,244,0.2)"
+          : "rgba(128,136,141,0.2)"};
+    }
   }
   .CodeMirror-Tern-completion:before {
     left: 4px !important;
@@ -60,9 +75,9 @@ export const HintStyles = createGlobalStyle<{ editorTheme: EditorTheme }>`
     display: none;
     &.visible {
       display: block;
-      background-color: ${props =>
+      background-color: ${(props) =>
         props.editorTheme === EditorTheme.DARK ? "#23292e" : "#fff"} !important;
-      color: ${props =>
+      color: ${(props) =>
         props.editorTheme === EditorTheme.DARK
           ? "#F4F4F4"
           : "#1E242B"} !important;
@@ -71,7 +86,7 @@ export const HintStyles = createGlobalStyle<{ editorTheme: EditorTheme }>`
       font-size: 12px;
       padding: 5px !important;
       border: 1px solid !important;
-      border-color: ${props =>
+      border-color: ${(props) =>
         props.editorTheme === EditorTheme.DARK
           ? "#23292e"
           : "#DEDEDE"} !important;
@@ -109,7 +124,7 @@ export const EditorWrapper = styled.div<{
   borderLess?: boolean;
 }>`
   width: 100%;
-  ${props =>
+  ${(props) =>
     props.size === EditorSize.COMPACT && props.isFocused
       ? `
   z-index: 5;
@@ -118,13 +133,13 @@ export const EditorWrapper = styled.div<{
   left: 0;
   top: 0;
   `
-      : `z-index: 0; position: relative;`}
+      : `position: relative;`}
   min-height: 32px;
-  height: ${props => props.height || "auto"};
-  background-color: ${props =>
+  height: ${(props) => props.height || "auto"};
+  background-color: ${(props) =>
     props.editorTheme === EditorTheme.DARK ? "#272822" : "#fff"};
-  background-color: ${props => props.disabled && "#eef2f5"};
-  ${props =>
+  background-color: ${(props) => props.disabled && "#eef2f5"};
+  ${(props) =>
     !props.borderLess &&
     `
     border: 1px solid;
@@ -138,17 +153,18 @@ export const EditorWrapper = styled.div<{
   && {
     .CodeMirror-cursor {
       border-right: none;
-      border-left-color: ${props =>
+      border-left-width: 2px;
+      border-left-color: ${(props) =>
         props.editorTheme === EditorTheme.DARK
           ? props.theme.colors.textOnDarkBG
-          : props.theme.colors.textDefault} !important
+          : props.theme.colors.textDefault} !important;
     }
     .cm-s-duotone-light.CodeMirror {
       background: #ffffff;
       color: #000000 !important;
       & {
         span.cm-operator {
-          color: ${props => props.theme.colors.textDefault};
+          color: ${(props) => props.theme.colors.textDefault};
         }
       }
      }
@@ -157,11 +173,22 @@ export const EditorWrapper = styled.div<{
       color: #FFFFFF;
     }
     .binding-brackets {
-      color: ${props =>
-        props.editorTheme === EditorTheme.DARK
-          ? props.theme.colors.bindingTextDark
-          : props.theme.colors.bindingText};
+      ${(props) =>
+        props.hasError
+          ? `
+      color: ${props.theme.colors.error};
+      `
+          : `color: ${
+              props.editorTheme === EditorTheme.DARK
+                ? props.theme.colors.bindingTextDark
+                : props.theme.colors.bindingText
+            };`}
       font-weight: 700;
+    }
+    .CodeMirror-matchingbracket { 
+      text-decoration: none; 
+      color: #FFD600 !important;
+      background-color: #A74444;
     }
     .datasource-highlight {
       background-color: rgba(104, 113, 239, 0.1);
@@ -177,7 +204,7 @@ export const EditorWrapper = styled.div<{
       border-radius: 4px;
       height: auto;
     }
-    ${props =>
+    ${(props) =>
       props.disabled &&
       `
     .CodeMirror-cursor {
@@ -187,7 +214,7 @@ export const EditorWrapper = styled.div<{
     .CodeMirror pre.CodeMirror-placeholder {
       color: #a3b3bf;
     }
-    ${props =>
+    ${(props) =>
       props.size === EditorSize.COMPACT &&
       `
       .CodeMirror-hscrollbar {
@@ -200,8 +227,8 @@ export const EditorWrapper = styled.div<{
   }
   && {
     .CodeMirror-lines {
-      background-color: ${props => props.disabled && "#eef2f5"};
-      cursor: ${props => (props.disabled ? "not-allowed" : "text")};
+      background-color: ${(props) => props.disabled && "#eef2f5"};
+      cursor: ${(props) => (props.disabled ? "not-allowed" : "text")};
     }
   }
   .bp3-popover-target {
@@ -250,7 +277,7 @@ export const DynamicAutocompleteInputWrapper = styled.div<{
   position: relative;
   border: 1px solid;
   border-radius: 2px;
-  border-color: ${props =>
+  border-color: ${(props) =>
     !props.isError && props.isActive && props.skin === Skin.DARK
       ? Colors.ALABASTER
       : "transparent"};
@@ -260,12 +287,12 @@ export const DynamicAutocompleteInputWrapper = styled.div<{
     right: 0px;
   }
   &:hover {
-    border-color: ${props =>
+    border-color: ${(props) =>
       !props.isError && props.skin === Skin.DARK
         ? Colors.ALABASTER
         : "transparent"};
     .lightning-menu {
-      background: ${props =>
+      background: ${(props) =>
         !props.isNotHover
           ? props.skin === Skin.DARK
             ? Colors.ALABASTER
@@ -274,7 +301,7 @@ export const DynamicAutocompleteInputWrapper = styled.div<{
       svg {
         path,
         circle {
-          fill: ${props =>
+          fill: ${(props) =>
             !props.isNotHover
               ? props.skin === Skin.DARK
                 ? Colors.BLUE_CHARCOAL

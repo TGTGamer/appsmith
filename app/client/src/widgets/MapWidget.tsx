@@ -2,12 +2,14 @@ import React from "react";
 import BaseWidget, { WidgetProps, WidgetState } from "./BaseWidget";
 import { WidgetType } from "constants/WidgetConstants";
 import MapComponent from "components/designSystems/appsmith/MapComponent";
-import { WidgetPropertyValidationType } from "utils/ValidationFactory";
+import { WidgetPropertyValidationType } from "utils/WidgetValidation";
 import { VALIDATION_TYPES } from "constants/WidgetValidation";
 import { EventType } from "constants/ActionConstants";
 import { TriggerPropertiesMap } from "utils/WidgetFactory";
 import { getAppsmithConfigs } from "configs";
 import styled from "styled-components";
+import * as Sentry from "@sentry/react";
+import withMeta, { WithMeta } from "./MetaHOC";
 
 const { google } = getAppsmithConfigs();
 
@@ -26,6 +28,8 @@ const DisabledContainer = styled.div`
     color: #0a0b0e;
   }
 `;
+
+const DefaultCenter = { lat: -34.397, long: 150.644 };
 class MapWidget extends BaseWidget<MapWidgetProps, WidgetState> {
   static getPropertyValidationMap(): WidgetPropertyValidationType {
     return {
@@ -34,8 +38,10 @@ class MapWidget extends BaseWidget<MapWidgetProps, WidgetState> {
       isVisible: VALIDATION_TYPES.BOOLEAN,
       enableSearch: VALIDATION_TYPES.BOOLEAN,
       enablePickLocation: VALIDATION_TYPES.BOOLEAN,
+      enableCreateMarker: VALIDATION_TYPES.BOOLEAN,
       allowZoom: VALIDATION_TYPES.BOOLEAN,
       zoomLevel: VALIDATION_TYPES.NUMBER,
+      mapCenter: VALIDATION_TYPES.OBJECT,
     };
   }
 
@@ -57,59 +63,63 @@ class MapWidget extends BaseWidget<MapWidgetProps, WidgetState> {
     return {
       center: undefined,
       markers: undefined,
+      selectedMarker: undefined,
     };
   }
 
   updateCenter = (lat: number, long: number) => {
-    this.updateWidgetMetaProperty("center", { lat, long });
+    this.props.updateWidgetMetaProperty("center", { lat, long });
   };
 
   updateMarker = (lat: number, long: number, index: number) => {
-    const markers: Array<MarkerProps> = [...this.props.markers];
-    this.disableDrag(false);
-    this.updateWidgetMetaProperty(
-      "markers",
-      markers.map((marker, i) => {
+    const markers: Array<MarkerProps> = [...(this.props.markers || [])].map(
+      (marker, i) => {
         if (index === i) {
           marker.lat = lat;
           marker.long = long;
         }
         return marker;
-      }),
+      },
     );
+    this.disableDrag(false);
+    this.props.updateWidgetMetaProperty("markers", markers);
   };
 
   onCreateMarker = (lat: number, long: number) => {
     this.disableDrag(true);
-    this.updateWidgetMetaProperty("selectedMarker", {
-      lat: lat,
-      long: long,
+    const marker = { lat, long, title: "" };
+
+    const markers = [];
+    (this.props.markers || []).forEach((m) => {
+      markers.push(m);
     });
-    if (this.props.onCreateMarker) {
-      super.executeAction({
-        dynamicString: this.props.onCreateMarker,
-        event: {
-          type: EventType.ON_CREATE_MARKER,
-        },
-      });
-    }
+    markers.push(marker);
+    this.props.updateWidgetMetaProperty("markers", markers);
+    this.props.updateWidgetMetaProperty("selectedMarker", marker, {
+      dynamicString: this.props.onCreateMarker,
+      event: {
+        type: EventType.ON_CREATE_MARKER,
+      },
+    });
+  };
+
+  unselectMarker = () => {
+    this.props.updateWidgetMetaProperty("selectedMarker", undefined);
   };
 
   onMarkerClick = (lat: number, long: number, title: string) => {
-    this.updateWidgetMetaProperty("selectedMarker", {
+    this.disableDrag(true);
+    const selectedMarker = {
       lat: lat,
       long: long,
       title: title,
+    };
+    this.props.updateWidgetMetaProperty("selectedMarker", selectedMarker, {
+      dynamicString: this.props.onMarkerClick,
+      event: {
+        type: EventType.ON_MARKER_CLICK,
+      },
     });
-    this.disableDrag(true);
-    if (this.props.onMarkerClick) {
-      super.executeAction({
-        dynamicString: this.props.onMarkerClick,
-        event: {
-          type: EventType.ON_MARKER_CLICK,
-        },
-      });
-    }
   };
 
   getPageView() {
@@ -139,8 +149,8 @@ class MapWidget extends BaseWidget<MapWidgetProps, WidgetState> {
             isVisible={this.props.isVisible}
             zoomLevel={this.props.zoomLevel}
             allowZoom={this.props.allowZoom}
-            center={this.props.center || this.props.mapCenter}
-            enableCreateMarker
+            center={this.props.center || this.props.mapCenter || DefaultCenter}
+            enableCreateMarker={this.props.enableCreateMarker}
             selectedMarker={this.props.selectedMarker}
             updateCenter={this.updateCenter}
             isDisabled={this.props.isDisabled}
@@ -149,8 +159,9 @@ class MapWidget extends BaseWidget<MapWidgetProps, WidgetState> {
             saveMarker={this.onCreateMarker}
             updateMarker={this.updateMarker}
             selectMarker={this.onMarkerClick}
+            unselectMarker={this.unselectMarker}
             markers={this.props.markers || []}
-            disableDrag={() => {
+            enableDrag={() => {
               this.disableDrag(false);
             }}
           />
@@ -171,7 +182,7 @@ export interface MarkerProps {
   description?: string;
 }
 
-export interface MapWidgetProps extends WidgetProps {
+export interface MapWidgetProps extends WidgetProps, WithMeta {
   isDisabled?: boolean;
   isVisible?: boolean;
   enableSearch: boolean;
@@ -181,6 +192,7 @@ export interface MapWidgetProps extends WidgetProps {
   mapCenter: {
     lat: number;
     long: number;
+    title?: string;
   };
   center?: {
     lat: number;
@@ -198,3 +210,4 @@ export interface MapWidgetProps extends WidgetProps {
 }
 
 export default MapWidget;
+export const ProfiledMapWidget = Sentry.withProfiler(withMeta(MapWidget));

@@ -1,44 +1,35 @@
 import React, { useEffect } from "react";
 import styled from "styled-components";
-import { connect } from "react-redux";
+import { connect, useSelector } from "react-redux";
 import { AppState } from "reducers";
-import { getCurrentOrg } from "selectors/organizationSelectors";
+import { getCurrentAppOrg } from "selectors/organizationSelectors";
 import { ReduxActionTypes } from "constants/ReduxActionConstants";
 import CopyToClipBoard from "components/designSystems/appsmith/CopyToClipBoard";
 import {
   isPermitted,
   PERMISSION_TYPE,
 } from "../Applications/permissionHelpers";
-import { getDefaultPageId } from "sagas/SagaUtils";
 import { getApplicationViewerPageURL } from "constants/routes";
 import OrgInviteUsersForm from "./OrgInviteUsersForm";
-import { StyledSwitch } from "components/propertyControls/StyledControls";
-import Spinner from "components/editorComponents/Spinner";
 import { getCurrentUser } from "selectors/usersSelectors";
+import Text, { TextType } from "components/ads/Text";
+import Toggle from "components/ads/Toggle";
+import { ANONYMOUS_USERNAME } from "constants/userConstants";
 
 const Title = styled.div`
-  font-weight: bold;
   padding: 10px 0px;
 `;
 
 const ShareWithPublicOption = styled.div`
-   {
-    display: flex;
-    padding: 10px 0px;
-    justify-content: space-between;
-  }
+  display: flex;
+  margin-bottom: 15px;
+  align-items: center;
+  justify-content: space-between;
 `;
 
 const ShareToggle = styled.div`
-   {
-    &&& label {
-      margin-bottom: 0px;
-    }
-    &&& div {
-      margin-right: 5px;
-    }
-    display: flex;
-  }
+  flex-basis: 48px;
+  height: 23px;
 `;
 
 const AppInviteUsersForm = (props: any) => {
@@ -49,11 +40,12 @@ const AppInviteUsersForm = (props: any) => {
     changeAppViewAccess,
     applicationId,
     fetchCurrentOrg,
-    currentOrg,
     currentUser,
+    defaultPageId,
   } = props;
 
-  const userOrgPermissions = currentOrg?.userPermissions ?? [];
+  const currentOrg = useSelector(getCurrentAppOrg);
+  const userOrgPermissions = currentOrg.userPermissions ?? [];
   const userAppPermissions = currentApplicationDetails?.userPermissions ?? [];
   const canInviteToOrg = isPermitted(
     userOrgPermissions,
@@ -65,7 +57,6 @@ const AppInviteUsersForm = (props: any) => {
   );
 
   const getViewApplicationURL = () => {
-    const defaultPageId = getDefaultPageId(currentApplicationDetails.pages);
     const appViewEndPoint = getApplicationViewerPageURL(
       applicationId,
       defaultPageId,
@@ -74,7 +65,7 @@ const AppInviteUsersForm = (props: any) => {
   };
 
   useEffect(() => {
-    if (currentUser.name !== "anonymousUser") {
+    if (currentUser.name !== ANONYMOUS_USERNAME) {
       fetchCurrentOrg(props.orgId);
     }
   }, [props.orgId, fetchCurrentOrg, currentUser.name]);
@@ -84,29 +75,30 @@ const AppInviteUsersForm = (props: any) => {
       {canShareWithPublic && (
         <>
           <ShareWithPublicOption>
-            Make the application public
+            <Text type={TextType.H5}>Make the application public</Text>
             <ShareToggle>
-              {(isChangingViewAccess || isFetchingApplication) && (
-                <Spinner size={20} />
-              )}
               {currentApplicationDetails && (
-                <StyledSwitch
-                  onChange={() => {
+                <Toggle
+                  isLoading={isChangingViewAccess || isFetchingApplication}
+                  value={currentApplicationDetails.isPublic}
+                  disabled={isChangingViewAccess || isFetchingApplication}
+                  onToggle={() => {
                     changeAppViewAccess(
                       applicationId,
                       !currentApplicationDetails.isPublic,
                     );
                   }}
-                  disabled={isChangingViewAccess || isFetchingApplication}
-                  checked={currentApplicationDetails.isPublic}
-                  large
                 />
               )}
             </ShareToggle>
           </ShareWithPublicOption>
         </>
       )}
-      <Title>Get Shareable link for this for this application </Title>
+      <Title>
+        <Text type={TextType.H5}>
+          Get Shareable link for this for this application
+        </Text>
+      </Title>
       <CopyToClipBoard copyText={getViewApplicationURL()} />
 
       {canInviteToOrg && (
@@ -119,9 +111,9 @@ const AppInviteUsersForm = (props: any) => {
 export default connect(
   (state: AppState) => {
     return {
-      currentOrg: getCurrentOrg(state),
       currentUser: getCurrentUser(state),
       currentApplicationDetails: state.ui.applications.currentApplication,
+      defaultPageId: state.entities.pageList.defaultPageId,
       isFetchingApplication: state.ui.applications.isFetchingApplication,
       isChangingViewAccess: state.ui.applications.isChangingViewAccess,
     };

@@ -13,7 +13,7 @@ type PopperProps = {
 };
 
 const PopperWrapper = styled.div<{ zIndex: number }>`
-  z-index: ${props => props.zIndex};
+  z-index: ${(props) => props.zIndex};
   position: absolute;
 `;
 
@@ -56,7 +56,6 @@ export default (props: PopperProps) => {
           },
         },
       );
-      _popper.disableEventListeners();
       return () => {
         _popper.destroy();
       };

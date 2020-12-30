@@ -15,7 +15,6 @@ import {
   CSSUnit,
   CONTAINER_GRID_PADDING,
 } from "constants/WidgetConstants";
-import _ from "lodash";
 import DraggableComponent from "components/editorComponents/DraggableComponent";
 import ResizableComponent from "components/editorComponents/ResizableComponent";
 import { ExecuteActionPayload } from "constants/ActionConstants";
@@ -28,12 +27,15 @@ import ErrorBoundary from "components/editorComponents/ErrorBoundry";
 import {
   BASE_WIDGET_VALIDATION,
   WidgetPropertyValidationType,
-} from "utils/ValidationFactory";
+} from "utils/WidgetValidation";
 import {
   DerivedPropertiesMap,
   TriggerPropertiesMap,
 } from "utils/WidgetFactory";
-import { clearPropertyCache } from "utils/DynamicBindingUtils";
+import {
+  WidgetDynamicPathListProps,
+  WidgetEvaluatedProps,
+} from "../utils/DynamicBindingUtils";
 
 /***
  * BaseWidget
@@ -111,17 +113,9 @@ abstract class BaseWidget<
   updateWidgetProperty(propertyName: string, propertyValue: any): void {
     const { updateWidgetProperty } = this.context;
     const { widgetId } = this.props;
-    updateWidgetProperty &&
+    if (updateWidgetProperty && widgetId) {
       updateWidgetProperty(widgetId, propertyName, propertyValue);
-  }
-
-  updateWidgetMetaProperty(propertyName: string, propertyValue: any): void {
-    const { updateWidgetMetaProperty } = this.context;
-    const { widgetId } = this.props;
-    // Whenever this value updates, we need to clear cache to handle correct evaluation
-    clearPropertyCache(`${this.props.widgetName}.${propertyName}`);
-    updateWidgetMetaProperty &&
-      updateWidgetMetaProperty(widgetId, propertyName, propertyValue);
+    }
   }
 
   resetChildrenMetaProperty(widgetId: string) {
@@ -210,8 +204,8 @@ abstract class BaseWidget<
     );
   }
 
-  addErrorBoundary(content: ReactNode, isValid: boolean) {
-    return <ErrorBoundary isValid={isValid}>{content}</ErrorBoundary>;
+  addErrorBoundary(content: ReactNode) {
+    return <ErrorBoundary>{content}</ErrorBoundary>;
   }
 
   private getWidgetView(): ReactNode {
@@ -231,7 +225,7 @@ abstract class BaseWidget<
       case RenderModes.PAGE:
         content = this.getPageView();
         if (this.props.isVisible) {
-          content = this.addErrorBoundary(content, true);
+          content = this.addErrorBoundary(content);
           if (!this.props.detachFromLayout) {
             content = this.makePositioned(content);
           }
@@ -246,13 +240,8 @@ abstract class BaseWidget<
   abstract getPageView(): ReactNode;
 
   getCanvasView(): ReactNode {
-    let isValid = true;
-    if (this.props.invalidProps) {
-      isValid = _.keys(this.props.invalidProps).length === 0;
-    }
-    if (this.props.isLoading) isValid = true;
     const content = this.getPageView();
-    return this.addErrorBoundary(content, isValid);
+    return this.addErrorBoundary(content);
   }
 
   // TODO(abhinav): Maybe make this a pure component to bailout from updating altogether.
@@ -302,7 +291,7 @@ export interface BaseStyle {
   widthUnit?: CSSUnit;
 }
 
-export type WidgetState = {};
+export type WidgetState = Record<string, unknown>;
 
 export interface WidgetBuilder<T extends WidgetProps, S extends WidgetState> {
   buildWidget(widgetProps: T): JSX.Element;
@@ -335,6 +324,23 @@ export interface WidgetPositionProps extends WidgetRowCols {
   detachFromLayout?: boolean;
 }
 
+export const WIDGET_STATIC_PROPS = {
+  leftColumn: true,
+  rightColumn: true,
+  topRow: true,
+  bottomRow: true,
+  minHeight: true,
+  parentColumnSpace: true,
+  parentRowSpace: true,
+  children: true,
+  type: true,
+  widgetId: true,
+  widgetName: true,
+  parentId: true,
+  renderMode: true,
+  detachFromLayout: true,
+};
+
 export interface WidgetDisplayProps {
   //TODO(abhinav): Some of these props are mandatory
   isVisible?: boolean;
@@ -348,14 +354,11 @@ export interface WidgetDataProps
     WidgetPositionProps,
     WidgetDisplayProps {}
 
-export interface WidgetProps extends WidgetDataProps {
+export interface WidgetProps
+  extends WidgetDataProps,
+    WidgetDynamicPathListProps,
+    WidgetEvaluatedProps {
   key?: string;
-  dynamicBindings?: Record<string, true>;
-  dynamicTriggers?: Record<string, true>;
-  dynamicProperties?: Record<string, true>;
-  invalidProps?: Record<string, boolean>;
-  validationMessages?: Record<string, string>;
-  evaluatedValues?: Record<string, any>;
   isDefaultClickDisabled?: boolean;
   [key: string]: any;
 }
@@ -370,9 +373,9 @@ export const WidgetOperations = {
   MOVE: "MOVE",
   RESIZE: "RESIZE",
   ADD_CHILD: "ADD_CHILD",
-  REMOVE_CHILD: "REMOVE_CHILD",
   UPDATE_PROPERTY: "UPDATE_PROPERTY",
   DELETE: "DELETE",
+  ADD_CHILDREN: "ADD_CHILDREN",
 };
 
 export type WidgetOperation = typeof WidgetOperations[keyof typeof WidgetOperations];

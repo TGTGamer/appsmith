@@ -10,6 +10,13 @@ import { ButtonStyle } from "widgets/ButtonWidget";
 import { Theme, darkenHover, darkenActive } from "constants/DefaultTheme";
 import _ from "lodash";
 import { ComponentProps } from "components/designSystems/appsmith/BaseComponent";
+import { useScript, ScriptStatus } from "utils/hooks/useScript";
+import {
+  GOOGLE_RECAPTCHA_KEY_ERROR,
+  GOOGLE_RECAPTCHA_DOMAIN_ERROR,
+} from "constants/messages";
+import { Variant } from "components/ads/common";
+import { Toaster } from "components/ads/Toast";
 
 const getButtonColorStyles = (props: { theme: Theme } & ButtonStyleProps) => {
   if (props.filled) return props.theme.colors.textOnDarkBG;
@@ -41,36 +48,42 @@ const ButtonWrapper = styled((props: ButtonStyleProps & IButtonProps) => (
     width: 100%;
     height: 100%;
     transition: background-color 0.2s;
-    background-color: ${props =>
+    background-color: ${(props) =>
       props.filled &&
       props.accent &&
       props.theme.colors[AccentColorMap[props.accent]]};
     border: 1px solid
-      ${props =>
+      ${(props) =>
         props.accent
           ? props.theme.colors[AccentColorMap[props.accent]]
           : props.theme.colors.secondary};
     border-radius: 4px;
-    font-weight: ${props => props.theme.fontWeights[2]};
+    font-weight: ${(props) => props.theme.fontWeights[2]};
     outline: none;
     &.bp3-button {
       padding: 0px 10px;
     }
     && .bp3-button-text {
       max-width: 99%;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+
       max-height: 100%;
       overflow: hidden;
     }
     &&:hover,
     &&:focus {
       ${ButtonColorStyles};
-      background-color: ${props => {
+      background-color: ${(props) => {
         if (!props.filled) return props.theme.colors.secondaryDarker;
         if (props.accent !== "secondary" && props.accent) {
           return darkenHover(props.theme.colors[AccentColorMap[props.accent]]);
         }
       }};
-      border-color: ${props => {
+      border-color: ${(props) => {
         if (!props.filled) return;
         if (props.accent !== "secondary" && props.accent) {
           return darkenHover(props.theme.colors[AccentColorMap[props.accent]]);
@@ -79,13 +92,13 @@ const ButtonWrapper = styled((props: ButtonStyleProps & IButtonProps) => (
     }
     &&:active {
       ${ButtonColorStyles};
-      background-color: ${props => {
+      background-color: ${(props) => {
         if (!props.filled) return props.theme.colors.secondaryDarkest;
         if (props.accent !== "secondary" && props.accent) {
           return darkenActive(props.theme.colors[AccentColorMap[props.accent]]);
         }
       }};
-      border-color: ${props => {
+      border-color: ${(props) => {
         if (!props.filled) return;
         if (props.accent !== "secondary" && props.accent) {
           return darkenActive(props.theme.colors[AccentColorMap[props.accent]]);
@@ -124,6 +137,11 @@ export enum ButtonType {
   BUTTON = "button",
 }
 
+interface RecaptchaProps {
+  googleRecaptchaKey?: string;
+  clickWithRecaptcha: (token: string) => void;
+}
+
 interface ButtonContainerProps extends ComponentProps {
   text?: string;
   icon?: MaybeElement;
@@ -148,20 +166,82 @@ const mapButtonStyleToStyleName = (buttonStyle?: ButtonStyle) => {
   }
 };
 
-// To be used with the canvas
-const ButtonContainer = (props: ButtonContainerProps & ButtonStyleProps) => {
+const RecaptchaComponent = (
+  props: {
+    children: any;
+    onClick?: (event: React.MouseEvent<HTMLElement>) => void;
+  } & RecaptchaProps,
+) => {
+  function handleError(event: React.MouseEvent<HTMLElement>, error: string) {
+    Toaster.show({
+      text: error,
+      variant: Variant.danger,
+    });
+    props.onClick && props.onClick(event);
+  }
+  const status = useScript(
+    `https://www.google.com/recaptcha/api.js?render=${props.googleRecaptchaKey}`,
+  );
   return (
-    <BaseButton
-      loading={props.isLoading}
-      icon={props.icon}
-      rightIcon={props.rightIcon}
-      text={props.text}
-      filled={props.buttonStyle !== "SECONDARY_BUTTON"}
-      accent={mapButtonStyleToStyleName(props.buttonStyle)}
+    <div
+      onClick={(event: React.MouseEvent<HTMLElement>) => {
+        if (status === ScriptStatus.READY) {
+          (window as any).grecaptcha.ready(() => {
+            try {
+              (window as any).grecaptcha
+                .execute(props.googleRecaptchaKey, { action: "submit" })
+                .then((token: any) => {
+                  props.clickWithRecaptcha(token);
+                })
+                .catch(() => {
+                  // Handle corrent key with wrong
+                  handleError(event, GOOGLE_RECAPTCHA_KEY_ERROR);
+                });
+            } catch (ex) {
+              // Handle wrong key
+              handleError(event, GOOGLE_RECAPTCHA_DOMAIN_ERROR);
+            }
+          });
+        }
+      }}
+    >
+      {props.children}
+    </div>
+  );
+};
+
+const BtnWrapper = (
+  props: {
+    children: any;
+    onClick?: (event: React.MouseEvent<HTMLElement>) => void;
+  } & RecaptchaProps,
+) => {
+  if (!props.googleRecaptchaKey)
+    return <div onClick={props.onClick}>{props.children}</div>;
+  return <RecaptchaComponent {...props}></RecaptchaComponent>;
+};
+
+// To be used with the canvas
+const ButtonContainer = (
+  props: ButtonContainerProps & ButtonStyleProps & RecaptchaProps,
+) => {
+  return (
+    <BtnWrapper
+      googleRecaptchaKey={props.googleRecaptchaKey}
+      clickWithRecaptcha={props.clickWithRecaptcha}
       onClick={props.onClick}
-      disabled={props.disabled}
-      type={props.type}
-    />
+    >
+      <BaseButton
+        loading={props.isLoading}
+        icon={props.icon}
+        rightIcon={props.rightIcon}
+        text={props.text}
+        filled={props.buttonStyle !== "SECONDARY_BUTTON"}
+        accent={mapButtonStyleToStyleName(props.buttonStyle)}
+        disabled={props.disabled}
+        type={props.type}
+      />
+    </BtnWrapper>
   );
 };
 

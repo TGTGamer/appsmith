@@ -47,8 +47,15 @@ export interface FetchAllRolesRequest {
 
 export interface SaveOrgRequest {
   id: string;
-  name: string;
-  website: string;
+  name?: string;
+  website?: string;
+  email?: string;
+}
+
+export interface SaveOrgLogo {
+  id: string;
+  logo: File;
+  progress: (progressEvent: ProgressEvent) => void;
 }
 
 export interface CreateOrgRequest {
@@ -98,6 +105,27 @@ class OrgApi extends Api {
       username: request.username,
       roleName: null,
     });
+  }
+  static saveOrgLogo(request: SaveOrgLogo): AxiosPromise<ApiResponse> {
+    const formData = new FormData();
+    if (request.logo) {
+      formData.append("file", request.logo);
+    }
+
+    return Api.post(
+      OrgApi.orgsURL + "/" + request.id + "/logo",
+      formData,
+      null,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        onUploadProgress: request.progress,
+      },
+    );
+  }
+  static deleteOrgLogo(request: { id: string }): AxiosPromise<ApiResponse> {
+    return Api.delete(OrgApi.orgsURL + "/" + request.id + "/logo");
   }
 }
 export default OrgApi;

@@ -16,18 +16,20 @@ import {
 import { IconNames } from "@blueprintjs/icons";
 
 export type TreeDropdownOption = DropdownOption & {
-  onSelect?: (value: TreeDropdownOption, setter?: Function) => void;
+  onSelect?: (value: TreeDropdownOption, setter?: Setter) => void;
   children?: TreeDropdownOption[];
   className?: string;
   type?: string;
 };
 
+type Setter = (value: TreeDropdownOption, defaultVal?: string) => void;
+
 type TreeDropdownProps = {
   optionTree: TreeDropdownOption[];
   selectedValue: string;
-  getDefaults?: Function;
+  getDefaults?: (value: any) => any;
   defaultText: string;
-  onSelect: (value: TreeDropdownOption, defaultVal?: string) => void;
+  onSelect: Setter;
   selectedLabelModifier?: (
     option: TreeDropdownOption,
     displayValue?: string,
@@ -48,7 +50,7 @@ function getSelectedOption(
     value: "",
   };
   options.length > 0 &&
-    options.forEach(option => {
+    options.forEach((option) => {
       // Find the selected option in the OptionsTree
       if (option.value === selectedValue) {
         selectedOption = option;

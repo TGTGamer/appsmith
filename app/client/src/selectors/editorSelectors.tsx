@@ -2,24 +2,31 @@ import { createSelector } from "reselect";
 
 import { AppState } from "reducers";
 import { WidgetConfigReducerState } from "reducers/entityReducers/widgetConfigReducer";
-import { WidgetCardProps, WidgetProps } from "widgets/BaseWidget";
+import {
+  WIDGET_STATIC_PROPS,
+  WidgetCardProps,
+  WidgetProps,
+} from "widgets/BaseWidget";
 import { WidgetSidebarReduxState } from "reducers/uiReducers/widgetSidebarReducer";
 import CanvasWidgetsNormalizer from "normalizers/CanvasWidgetsNormalizer";
-import { getEntities } from "./entitiesSelector";
 import {
-  FlattenedWidgetProps,
   CanvasWidgetsReduxState,
+  FlattenedWidgetProps,
 } from "reducers/entityReducers/canvasWidgetsReducer";
 import { PageListReduxState } from "reducers/entityReducers/pageListReducer";
 
 import { OccupiedSpace } from "constants/editorConstants";
-import { evaluateDataTreeWithoutFunctions } from "selectors/dataTreeSelectors";
+import { getDataTree } from "selectors/dataTreeSelectors";
 import _ from "lodash";
 import { ContainerWidgetProps } from "widgets/ContainerWidget";
-import { DataTreeWidget } from "entities/DataTree/dataTreeFactory";
+import { DataTreeWidget, ENTITY_TYPE } from "entities/DataTree/dataTreeFactory";
 import { getActions } from "sagas/selectors";
 
-import * as log from "loglevel";
+import PerformanceTracker, {
+  PerformanceTransactionName,
+} from "utils/PerformanceTracker";
+import { getCanvasWidgets } from "./entitiesSelector";
+import { WidgetTypes } from "../constants/WidgetConstants";
 
 const getWidgetConfigs = (state: AppState) => state.entities.widgetConfig;
 const getWidgetSideBar = (state: AppState) => state.ui.widgetSidebar;
@@ -50,7 +57,7 @@ export const getIsPageSaving = (state: AppState) => {
 
   const savingApis = state.ui.apiPane.isSaving;
 
-  Object.keys(savingApis).forEach(apiId => {
+  Object.keys(savingApis).forEach((apiId) => {
     areApisSaving = savingApis[apiId] || areApisSaving;
   });
 
@@ -77,7 +84,7 @@ export const getCurrentApplicationId = (state: AppState) =>
 export const getCurrentPageName = createSelector(
   getPageListState,
   (pageList: PageListReduxState) =>
-    pageList.pages.find(page => page.pageId === pageList.currentPageId)
+    pageList.pages.find((page) => page.pageId === pageList.currentPageId)
       ?.pageName,
 );
 
@@ -89,38 +96,48 @@ export const getWidgetCards = createSelector(
     widgetConfigs: WidgetConfigReducerState,
   ) => {
     const cards = widgetCards.cards;
-    const groups: string[] = Object.keys(cards);
-    groups.forEach((group: string) => {
-      cards[group] = cards[group].map((widget: WidgetCardProps) => {
+    return cards
+      .map((widget: WidgetCardProps) => {
         const { rows, columns } = widgetConfigs.config[widget.type];
         return { ...widget, rows, columns };
-      });
-    });
-    return cards;
+      })
+      .sort(
+        (
+          { widgetCardName: widgetACardName }: WidgetCardProps,
+          { widgetCardName: widgetBCardName }: WidgetCardProps,
+        ) => widgetACardName.localeCompare(widgetBCardName),
+      );
   },
 );
 
 export const getCanvasWidgetDsl = createSelector(
-  getEntities,
-  evaluateDataTreeWithoutFunctions,
+  getCanvasWidgets,
+  getDataTree,
   (
-    entities: AppState["entities"],
+    canvasWidgets: CanvasWidgetsReduxState,
     evaluatedDataTree,
   ): ContainerWidgetProps<WidgetProps> => {
-    log.debug("Evaluating data tree to get canvas widgets");
-    log.debug({ evaluatedDataTree });
-    const widgets = { ...entities.canvasWidgets };
-    Object.keys(widgets).forEach(widgetKey => {
-      const evaluatedWidget = _.find(evaluatedDataTree, {
-        widgetId: widgetKey,
-      });
+    PerformanceTracker.startTracking(
+      PerformanceTransactionName.CONSTRUCT_CANVAS_DSL,
+    );
+    const widgets: Record<string, DataTreeWidget> = {};
+    Object.keys(canvasWidgets).forEach((widgetKey) => {
+      const canvasWidget = canvasWidgets[widgetKey];
+      const evaluatedWidget = evaluatedDataTree[
+        canvasWidget.widgetName
+      ] as DataTreeWidget;
       if (evaluatedWidget) {
-        widgets[widgetKey] = evaluatedWidget as DataTreeWidget;
+        widgets[widgetKey] = createCanvasWidget(canvasWidget, evaluatedWidget);
+      } else {
+        widgets[widgetKey] = createLoadingWidget(canvasWidget);
       }
     });
-    return CanvasWidgetsNormalizer.denormalize("0", {
+
+    const denormalizedWidgets = CanvasWidgetsNormalizer.denormalize("0", {
       canvasWidgets: widgets,
     });
+    PerformanceTracker.stopTracking();
+    return denormalizedWidgets;
   },
 );
 
@@ -128,7 +145,7 @@ const getOccupiedSpacesForContainer = (
   containerWidgetId: string,
   widgets: FlattenedWidgetProps[],
 ): OccupiedSpace[] => {
-  return widgets.map(widget => {
+  return widgets.map((widget) => {
     const occupiedSpace: OccupiedSpace = {
       id: widget.widgetId,
       parentId: containerWidgetId,
@@ -152,7 +169,7 @@ export const getOccupiedSpaces = createSelector(
     // Get all widgets with type "CONTAINER_WIDGET" and has children
     const containerWidgets: FlattenedWidgetProps[] = Object.values(
       widgets,
-    ).filter(widget => widget.children && widget.children.length > 0);
+    ).filter((widget) => widget.children && widget.children.length > 0);
 
     // If we have any container widgets
     if (containerWidgets) {
@@ -160,7 +177,7 @@ export const getOccupiedSpaces = createSelector(
         const containerWidgetId = containerWidget.widgetId;
         // Get child widgets for the container
         const childWidgets = Object.keys(widgets).filter(
-          widgetId =>
+          (widgetId) =>
             containerWidget.children &&
             containerWidget.children.indexOf(widgetId) > -1 &&
             !widgets[widgetId].detachFromLayout,
@@ -169,7 +186,7 @@ export const getOccupiedSpaces = createSelector(
         // Assign it to the containerWidgetId key in occupiedSpaces
         occupiedSpaces[containerWidgetId] = getOccupiedSpacesForContainer(
           containerWidgetId,
-          childWidgets.map(widgetId => widgets[widgetId]),
+          childWidgets.map((widgetId) => widgets[widgetId]),
         );
       });
     }
@@ -181,7 +198,7 @@ export const getOccupiedSpaces = createSelector(
 export const getActionById = createSelector(
   [getActions, (state: any, props: any) => props.match.params.apiId],
   (actions, id) => {
-    const action = actions.find(action => action.config.id === id);
+    const action = actions.find((action) => action.config.id === id);
     if (action) {
       return action.config;
     } else {
@@ -189,3 +206,32 @@ export const getActionById = createSelector(
     }
   },
 );
+
+const createCanvasWidget = (
+  canvasWidget: FlattenedWidgetProps,
+  evaluatedWidget: DataTreeWidget,
+) => {
+  const widgetStaticProps = _.pick(
+    canvasWidget,
+    Object.keys(WIDGET_STATIC_PROPS),
+  );
+  return {
+    ...evaluatedWidget,
+    ...widgetStaticProps,
+  };
+};
+
+const createLoadingWidget = (
+  canvasWidget: FlattenedWidgetProps,
+): DataTreeWidget => {
+  const widgetStaticProps = _.pick(
+    canvasWidget,
+    Object.keys(WIDGET_STATIC_PROPS),
+  ) as WidgetProps;
+  return {
+    ...widgetStaticProps,
+    type: WidgetTypes.SKELETON_WIDGET,
+    ENTITY_TYPE: ENTITY_TYPE.WIDGET,
+    isLoading: true,
+  };
+};

@@ -4,14 +4,12 @@ import {
   Classes,
   PopoverInteractionKind,
   Position,
-  Tooltip,
 } from "@blueprintjs/core";
-import { IconWrapper } from "constants/IconConstants";
 import styled from "styled-components";
 import { Colors } from "constants/Colors";
 import { ReactComponent as CompactIcon } from "assets/icons/control/compact.svg";
-import { TableIconWrapper } from "components/designSystems/appsmith/TableStyledWrappers";
 import { CompactMode, CompactModeTypes } from "widgets/TableWidget";
+import TableActionIcon from "components/designSystems/appsmith/TableActionIcon";
 
 const DropDownWrapper = styled.div`
   display: flex;
@@ -32,12 +30,12 @@ const OptionWrapper = styled.div<{ selected?: boolean }>`
   box-sizing: border-box;
   padding: 8px;
   color: ${Colors.OXFORD_BLUE};
-  opacity: ${props => (props.selected ? 1 : 0.7)};
+  opacity: ${(props) => (props.selected ? 1 : 0.7)};
   min-width: 200px;
   cursor: pointer;
   margin-bottom: 4px;
-  background: ${props => (props.selected ? Colors.POLAR : Colors.WHITE)};
-  border-left: ${props => (props.selected ? "4px solid #29CCA3" : "none")};
+  background: ${(props) => (props.selected ? Colors.POLAR : Colors.WHITE)};
+  border-left: ${(props) => (props.selected ? "4px solid #29CCA3" : "none")};
   border-radius: 4px;
   .option-title {
     font-weight: 500;
@@ -85,28 +83,18 @@ const TableCompactMode = (props: TableCompactModeProps) => {
       onClose={() => {
         selectMenu(false);
       }}
+      isOpen={selected}
     >
-      <TableIconWrapper
+      <TableActionIcon
+        tooltip="Row Height"
         selected={selected}
-        onClick={e => {
-          selectMenu(!selected);
+        selectMenu={(selected: boolean) => {
+          selectMenu(selected);
         }}
+        className="t--table-compact-mode-toggle-btn"
       >
-        <Tooltip
-          autoFocus={false}
-          hoverOpenDelay={1000}
-          content="Row Height"
-          position="top"
-        >
-          <IconWrapper
-            width={20}
-            height={20}
-            color={selected ? Colors.OXFORD_BLUE : Colors.CADET_BLUE}
-          >
-            <CompactIcon />
-          </IconWrapper>
-        </Tooltip>
-      </TableIconWrapper>
+        <CompactIcon />
+      </TableActionIcon>
       <DropDownWrapper>
         {CompactModes.map((item: CompactModeItem, index: number) => {
           return (
@@ -118,7 +106,7 @@ const TableCompactMode = (props: TableCompactModeProps) => {
               onClick={() => {
                 props.updateCompactMode(item.value);
               }}
-              className={Classes.POPOVER_DISMISS}
+              className={`${Classes.POPOVER_DISMISS} t--table-compact-mode-option`}
             >
               {item.title}
             </OptionWrapper>

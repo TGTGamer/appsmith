@@ -2,11 +2,39 @@ import API from "./Api";
 import { GenericApiResponse } from "./ApiResponses";
 import { AxiosPromise } from "axios";
 import { DEFAULT_TEST_DATA_SOURCE_TIMEOUT_MS } from "constants/ApiConstants";
+import { Property } from "entities/Action";
 
 interface DatasourceAuthentication {
   authType?: string;
   username?: string;
   password?: string;
+}
+
+export interface QueryTemplate {
+  title: string;
+  body: string;
+}
+
+export interface DatasourceColumns {
+  name: string;
+  type: string;
+}
+
+export interface DatasourceKeys {
+  name: string;
+  type: string;
+}
+
+export interface DatasourceTable {
+  type: string;
+  name: string;
+  columns: DatasourceColumns[];
+  keys: DatasourceKeys[];
+  templates: QueryTemplate[];
+}
+
+export interface DatasourceStructure {
+  tables?: DatasourceTable[];
 }
 
 export interface Datasource {
@@ -18,11 +46,12 @@ export interface Datasource {
     url: string;
     authentication?: DatasourceAuthentication;
     properties?: Record<string, string>;
-    headers?: Record<string, string>;
+    headers?: Property[];
     databaseName?: string;
   };
   invalids?: string[];
   isValid?: boolean;
+  structure?: DatasourceStructure;
 }
 
 export interface CreateDatasourceConfig {
@@ -46,11 +75,11 @@ class DatasourcesApi extends API {
     return API.get(DatasourcesApi.url + `?organizationId=${orgId}`);
   }
 
-  static createDatasource(datasourceConfig: Partial<Datasource>): Promise<{}> {
+  static createDatasource(datasourceConfig: Partial<Datasource>): Promise<any> {
     return API.post(DatasourcesApi.url, datasourceConfig);
   }
 
-  static testDatasource(datasourceConfig: Partial<Datasource>): Promise<{}> {
+  static testDatasource(datasourceConfig: Partial<Datasource>): Promise<any> {
     return API.post(`${DatasourcesApi.url}/test`, datasourceConfig, undefined, {
       timeout: DEFAULT_TEST_DATA_SOURCE_TIMEOUT_MS,
     });
@@ -59,12 +88,21 @@ class DatasourcesApi extends API {
   static updateDatasource(
     datasourceConfig: Partial<Datasource>,
     id: string,
-  ): Promise<{}> {
+  ): Promise<any> {
     return API.put(DatasourcesApi.url + `/${id}`, datasourceConfig);
   }
 
-  static deleteDatasource(id: string): Promise<{}> {
+  static deleteDatasource(id: string): Promise<any> {
     return API.delete(DatasourcesApi.url + `/${id}`);
+  }
+
+  static fetchDatasourceStructure(
+    id: string,
+    ignoreCache = false,
+  ): Promise<any> {
+    return API.get(
+      DatasourcesApi.url + `/${id}/structure?ignoreCache=${ignoreCache}`,
+    );
   }
 }
 

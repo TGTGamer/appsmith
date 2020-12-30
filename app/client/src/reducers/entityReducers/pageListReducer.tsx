@@ -3,20 +3,21 @@ import {
   ReduxAction,
   ReduxActionTypes,
   PageListPayload,
+  ClonePageSuccessPayload,
 } from "constants/ReduxActionConstants";
 
 const initialState: PageListReduxState = {
   pages: [],
 };
 
-const pageListReducer = createReducer(initialState, {
+export const pageListReducer = createReducer(initialState, {
   [ReduxActionTypes.DELETE_PAGE_INIT]: (
     state: PageListReduxState,
     action: ReduxAction<{ id: string }>,
   ) => {
     if (state.defaultPageId !== action.payload.id) {
       const pages = [
-        ...state.pages.filter(page => page.pageId !== action.payload.id),
+        ...state.pages.filter((page) => page.pageId !== action.payload.id),
       ];
       return {
         ...state,
@@ -33,7 +34,7 @@ const pageListReducer = createReducer(initialState, {
       ...state,
       ...action.payload,
       defaultPageId:
-        action.payload.pages.find(page => page.isDefault)?.pageId ||
+        action.payload.pages.find((page) => page.isDefault)?.pageId ||
         action.payload.pages[0].pageId,
     };
   },
@@ -47,9 +48,20 @@ const pageListReducer = createReducer(initialState, {
     }>,
   ) => {
     const _state = state;
-    _state.pages = state.pages.map(page => ({ ...page, latest: false }));
+    _state.pages = state.pages.map((page) => ({ ...page, latest: false }));
     _state.pages.push({ ...action.payload, latest: true });
     return { ..._state };
+  },
+  [ReduxActionTypes.CLONE_PAGE_SUCCESS]: (
+    state: PageListReduxState,
+    action: ReduxAction<ClonePageSuccessPayload>,
+  ): PageListReduxState => {
+    return {
+      ...state,
+      pages: state.pages
+        .map((page) => ({ ...page, latest: false }))
+        .concat([{ ...action.payload, latest: true }]),
+    };
   },
   [ReduxActionTypes.SET_DEFAULT_APPLICATION_PAGE_SUCCESS]: (
     state: PageListReduxState,
@@ -59,7 +71,7 @@ const pageListReducer = createReducer(initialState, {
       state.applicationId === action.payload.applicationId &&
       state.defaultPageId !== action.payload.pageId
     ) {
-      const pageList = state.pages.map(page => {
+      const pageList = state.pages.map((page) => {
         if (page.pageId === state.defaultPageId) page.isDefault = false;
         if (page.pageId === action.payload.pageId) page.isDefault = true;
         return page;
@@ -84,7 +96,7 @@ const pageListReducer = createReducer(initialState, {
     action: ReduxAction<{ id: string; name: string }>,
   ) => {
     const pages = [...state.pages];
-    const updatedPage = pages.find(page => page.pageId === action.payload.id);
+    const updatedPage = pages.find((page) => page.pageId === action.payload.id);
     if (updatedPage) {
       updatedPage.pageName = action.payload.name;
     }

@@ -1,4 +1,6 @@
-import { ReduxActionTypes } from "constants/ReduxActionConstants";
+import { ReduxAction, ReduxActionTypes } from "constants/ReduxActionConstants";
+import { APP_MODE } from "../reducers/entityReducers/appReducer";
+import { UpdateApplicationPayload } from "api/ApplicationApi";
 
 export const setDefaultApplicationPageSuccess = (
   pageId: string,
@@ -13,17 +15,33 @@ export const setDefaultApplicationPageSuccess = (
   };
 };
 
-export const fetchApplications = () => {
-  return {
-    type: ReduxActionTypes.FETCH_APPLICATION_LIST_INIT,
-  };
-};
+export interface FetchApplicationPayload {
+  applicationId: string;
+  mode: APP_MODE;
+}
 
-export const fetchApplication = (applicationId: string) => {
+export const fetchApplication = (
+  applicationId: string,
+  mode: APP_MODE,
+): ReduxAction<FetchApplicationPayload> => {
   return {
     type: ReduxActionTypes.FETCH_APPLICATION_INIT,
     payload: {
       applicationId,
+      mode,
+    },
+  };
+};
+
+export const updateApplication = (
+  id: string,
+  data: UpdateApplicationPayload,
+) => {
+  return {
+    type: ReduxActionTypes.UPDATE_APPLICATION,
+    payload: {
+      id,
+      ...data,
     },
   };
 };
@@ -34,5 +52,20 @@ export const publishApplication = (applicationId: string) => {
     payload: {
       applicationId,
     },
+  };
+};
+
+export const duplicateApplication = (applicationId: string) => {
+  return {
+    type: ReduxActionTypes.DUPLICATE_APPLICATION_INIT,
+    payload: {
+      applicationId,
+    },
+  };
+};
+
+export const getAllApplications = () => {
+  return {
+    type: ReduxActionTypes.GET_ALL_APPLICATION_INIT,
   };
 };

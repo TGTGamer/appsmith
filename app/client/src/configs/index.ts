@@ -1,18 +1,28 @@
 import { AppsmithUIConfigs, FeatureFlagConfig } from "./types";
+import { Integrations } from "@sentry/tracing";
+import * as Sentry from "@sentry/react";
+import { createBrowserHistory } from "history";
+const history = createBrowserHistory();
+
 type INJECTED_CONFIGS = {
   sentry: {
     dsn: string;
     release: string;
     environment: string;
   };
-  hotjar: {
+  smartLook: {
     id: string;
-    sv: string;
   };
   enableGoogleOAuth: boolean;
   enableGithubOAuth: boolean;
   enableRapidAPI: boolean;
-  segment: string;
+  segment: {
+    apiKey: string;
+    ceKey: string;
+  };
+  fusioncharts: {
+    licenseKey: string;
+  };
   optimizely: string;
   enableMixpanel: boolean;
   google: string;
@@ -30,6 +40,7 @@ type INJECTED_CONFIGS = {
   };
   intercomAppID: string;
   mailEnabled: boolean;
+  disableTelemetry: boolean;
 };
 declare global {
   interface Window {
@@ -49,11 +60,12 @@ const getConfigsFromEnvVars = (): INJECTED_CONFIGS => {
     sentry: {
       dsn: process.env.REACT_APP_SENTRY_DSN || "",
       release: process.env.REACT_APP_SENTRY_RELEASE || "",
-      environment: capitalizeText(process.env.NODE_ENV),
+      environment:
+        process.env.REACT_APP_SENTRY_ENVIRONMENT ||
+        capitalizeText(process.env.NODE_ENV),
     },
-    hotjar: {
-      id: process.env.REACT_APP_HOTJAR_HJID || "",
-      sv: process.env.REACT_APP_HOTJAR_HJSV || "",
+    smartLook: {
+      id: process.env.REACT_APP_SMART_LOOK_ID || "",
     },
     enableGoogleOAuth: process.env.REACT_APP_OAUTH2_GOOGLE_CLIENT_ID
       ? process.env.REACT_APP_OAUTH2_GOOGLE_CLIENT_ID.length > 0
@@ -61,7 +73,13 @@ const getConfigsFromEnvVars = (): INJECTED_CONFIGS => {
     enableGithubOAuth: process.env.REACT_APP_OAUTH2_GITHUB_CLIENT_ID
       ? process.env.REACT_APP_OAUTH2_GITHUB_CLIENT_ID.length > 0
       : false,
-    segment: process.env.REACT_APP_SEGMENT_KEY || "",
+    segment: {
+      apiKey: process.env.REACT_APP_SEGMENT_KEY || "",
+      ceKey: process.env.REACT_APP_SEGMENT_CE_KEY || "",
+    },
+    fusioncharts: {
+      licenseKey: process.env.REACT_APP_FUSIONCHARTS_LICENSE_KEY || "",
+    },
     optimizely: process.env.REACT_APP_OPTIMIZELY_KEY || "",
     enableMixpanel: process.env.REACT_APP_SEGMENT_KEY
       ? process.env.REACT_APP_SEGMENT_KEY.length > 0
@@ -94,12 +112,13 @@ const getConfigsFromEnvVars = (): INJECTED_CONFIGS => {
     mailEnabled: process.env.REACT_APP_MAIL_ENABLED
       ? process.env.REACT_APP_MAIL_ENABLED.length > 0
       : false,
+    disableTelemetry: true,
   };
 };
 
 const getConfig = (fromENV: string, fromWindow: string) => {
-  if (fromENV.length > 0) return { enabled: true, value: fromENV };
-  else if (fromWindow.length > 0) return { enabled: true, value: fromWindow };
+  if (fromWindow.length > 0) return { enabled: true, value: fromWindow };
+  else if (fromENV.length > 0) return { enabled: true, value: fromENV };
   return { enabled: false, value: "" };
 };
 
@@ -131,29 +150,29 @@ export const getAppsmithConfigs = (): AppsmithUIConfigs => {
     APPSMITH_FEATURE_CONFIGS.sentry.release,
   );
   const sentryENV = getConfig(
-    APPSMITH_FEATURE_CONFIGS.sentry.environment,
     ENV_CONFIG.sentry.environment,
+    APPSMITH_FEATURE_CONFIGS.sentry.environment,
   );
   const segment = getConfig(
-    ENV_CONFIG.segment,
-    APPSMITH_FEATURE_CONFIGS.segment,
+    ENV_CONFIG.segment.apiKey,
+    APPSMITH_FEATURE_CONFIGS.segment.apiKey,
+  );
+  const fusioncharts = getConfig(
+    ENV_CONFIG.fusioncharts.licenseKey,
+    APPSMITH_FEATURE_CONFIGS.fusioncharts.licenseKey,
   );
   const google = getConfig(ENV_CONFIG.google, APPSMITH_FEATURE_CONFIGS.google);
 
   // As the following shows, the config variables can be set using a combination
   // of env variables and injected configs
-  const hotjarId = getConfig(
-    ENV_CONFIG.hotjar.id,
-    APPSMITH_FEATURE_CONFIGS.hotjar.id,
-  );
-  const hotjarSV = getConfig(
-    ENV_CONFIG.hotjar.sv,
-    APPSMITH_FEATURE_CONFIGS.hotjar.sv,
+  const smartLook = getConfig(
+    ENV_CONFIG.smartLook.id,
+    APPSMITH_FEATURE_CONFIGS.smartLook.id,
   );
 
   const algoliaAPIID = getConfig(
     ENV_CONFIG.algolia.apiId,
-    APPSMITH_FEATURE_CONFIGS.algolia.apiKey,
+    APPSMITH_FEATURE_CONFIGS.algolia.apiId,
   );
   const algoliaAPIKey = getConfig(
     ENV_CONFIG.algolia.apiKey,
@@ -164,21 +183,53 @@ export const getAppsmithConfigs = (): AppsmithUIConfigs => {
     APPSMITH_FEATURE_CONFIGS.algolia.indexName,
   );
 
+  const segmentCEKey = getConfig(
+    ENV_CONFIG.segment.ceKey,
+    APPSMITH_FEATURE_CONFIGS.segment.ceKey,
+  );
+
+  // We enable segment tracking if either the Cloud API key is set or the self-hosted CE key is set
+  segment.enabled = segment.enabled || segmentCEKey.enabled;
+
+  let sentryTelemetry = true;
+  // Turn off all analytics if telemetry is disabled
+  if (APPSMITH_FEATURE_CONFIGS.disableTelemetry) {
+    smartLook.enabled = false;
+    segment.enabled = false;
+    sentryTelemetry = false;
+  }
+
   return {
     sentry: {
-      enabled: sentryDSN.enabled && sentryRelease.enabled && sentryENV.enabled,
+      enabled:
+        sentryDSN.enabled &&
+        sentryRelease.enabled &&
+        sentryENV.enabled &&
+        sentryTelemetry,
       dsn: sentryDSN.value,
       release: sentryRelease.value,
       environment: sentryENV.value,
+      normalizeDepth: 3,
+      integrations: [
+        new Integrations.BrowserTracing({
+          // Can also use reactRouterV4Instrumentation
+          routingInstrumentation: Sentry.reactRouterV5Instrumentation(history),
+        }),
+      ],
+      tracesSampleRate: 0.5,
     },
-    hotjar: {
-      enabled: hotjarId.enabled && hotjarSV.enabled,
-      id: hotjarId.value,
-      sv: hotjarSV.value, //parse as int?
+    smartLook: {
+      enabled: smartLook.enabled,
+      id: smartLook.value,
     },
     segment: {
       enabled: segment.enabled,
       apiKey: segment.value,
+      ceKey: segmentCEKey.value,
+    },
+    fusioncharts: {
+      enabled: fusioncharts.enabled,
+      licenseKey: fusioncharts.value,
     },
     algolia: {
       enabled: true,
@@ -211,5 +262,6 @@ export const getAppsmithConfigs = (): AppsmithUIConfigs => {
     intercomAppID:
       ENV_CONFIG.intercomAppID || APPSMITH_FEATURE_CONFIGS.intercomAppID,
     mailEnabled: ENV_CONFIG.mailEnabled || APPSMITH_FEATURE_CONFIGS.mailEnabled,
+    disableTelemetry: APPSMITH_FEATURE_CONFIGS.disableTelemetry,
   };
 };

@@ -4,8 +4,10 @@ import com.appsmith.external.models.Policy;
 import com.appsmith.server.acl.AclPermission;
 import com.appsmith.server.acl.AppsmithRole;
 import com.appsmith.server.acl.RoleGraph;
+import com.appsmith.server.constants.Constraint;
 import com.appsmith.server.constants.FieldName;
 import com.appsmith.server.domains.Application;
+import com.appsmith.server.domains.Asset;
 import com.appsmith.server.domains.Datasource;
 import com.appsmith.server.domains.Organization;
 import com.appsmith.server.domains.User;
@@ -13,23 +15,34 @@ import com.appsmith.server.domains.UserRole;
 import com.appsmith.server.dtos.InviteUsersDTO;
 import com.appsmith.server.exceptions.AppsmithError;
 import com.appsmith.server.exceptions.AppsmithException;
+import com.appsmith.server.repositories.AssetRepository;
 import com.appsmith.server.repositories.DatasourceRepository;
 import com.appsmith.server.repositories.OrganizationRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuple3;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +92,9 @@ public class OrganizationServiceTest {
 
     @Autowired
     RoleGraph roleGraph;
+
+    @Autowired
+    private AssetRepository assetRepository;
 
     Organization organization;
 
@@ -132,6 +148,7 @@ public class OrganizationServiceTest {
                     assertThat(organization1.getPolicies()).isNotEmpty();
                     assertThat(organization1.getPolicies()).containsAll(Set.of(manageOrgAppPolicy, manageOrgPolicy));
                     assertThat(organization1.getSlug() != null);
+                    assertThat(organization1.getEmail()).isEqualTo("api_user");
                 })
                 .verifyComplete();
     }
@@ -179,6 +196,14 @@ public class OrganizationServiceTest {
     @Test
     @WithUserDetails(value = "api_user")
     public void validUpdateOrganization() {
+        Policy manageOrgAppPolicy = Policy.builder().permission(ORGANIZATION_MANAGE_APPLICATIONS.getValue())
+                .users(Set.of("api_user"))
+                .build();
+
+        Policy manageOrgPolicy = Policy.builder().permission(MANAGE_ORGANIZATIONS.getValue())
+                .users(Set.of("api_user"))
+                .build();
+
         Organization organization = new Organization();
         organization.setName("Test Update Name");
         organization.setDomain("example.com");
@@ -200,6 +225,7 @@ public class OrganizationServiceTest {
                     assertThat(t.getName()).isEqualTo(organization.getName());
                     assertThat(t.getId()).isEqualTo(organization.getId());
                     assertThat(t.getDomain()).isEqualTo("abc.com");
+                    assertThat(t.getPolicies()).contains(manageOrgAppPolicy, manageOrgPolicy);
                 })
                 .verifyComplete();
     }
@@ -309,7 +335,7 @@ public class OrganizationServiceTest {
                     inviteUsersDTO.setOrgId(organization1.getId());
                     inviteUsersDTO.setRoleName(AppsmithRole.ORGANIZATION_ADMIN.getName());
 
-                    return userService.inviteUser(inviteUsersDTO, "http://localhost:8080")
+                    return userService.inviteUsers(inviteUsersDTO, "http://localhost:8080")
                             .collectList();
                 })
                 .cache();
@@ -369,7 +395,7 @@ public class OrganizationServiceTest {
                     inviteUsersDTO.setOrgId(organization1.getId());
                     inviteUsersDTO.setRoleName(AppsmithRole.ORGANIZATION_ADMIN.getName());
 
-                    return userService.inviteUser(inviteUsersDTO, "http://localhost:8080")
+                    return userService.inviteUsers(inviteUsersDTO, "http://localhost:8080")
                             .collectList();
                 })
                 .cache();
@@ -388,20 +414,20 @@ public class OrganizationServiceTest {
                     assertThat(org.getName()).isEqualTo("Another Test Organization");
                     assertThat(org.getUserRoles().stream()
                             .map(role -> role.getUsername())
-                            .filter(username -> username.equals("newEmailWhichShouldntExist@usertest.com"))
+                            .filter(username -> username.equals("newemailwhichshouldntexist@usertest.com"))
                             .collect(Collectors.toSet())
                     ).hasSize(1);
 
                     Policy manageOrgAppPolicy = Policy.builder().permission(ORGANIZATION_MANAGE_APPLICATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExist@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexist@usertest.com"))
                             .build();
 
                     Policy manageOrgPolicy = Policy.builder().permission(MANAGE_ORGANIZATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExist@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexist@usertest.com"))
                             .build();
 
                     Policy readOrgPolicy = Policy.builder().permission(READ_ORGANIZATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExist@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexist@usertest.com"))
                             .build();
 
                     assertThat(org.getPolicies()).isNotEmpty();
@@ -442,7 +468,7 @@ public class OrganizationServiceTest {
                     inviteUsersDTO.setOrgId(organization1.getId());
                     inviteUsersDTO.setRoleName(AppsmithRole.ORGANIZATION_VIEWER.getName());
 
-                    return userService.inviteUser(inviteUsersDTO, "http://localhost:8080")
+                    return userService.inviteUsers(inviteUsersDTO, "http://localhost:8080")
                             .collectList();
                 })
                 .cache();
@@ -461,16 +487,16 @@ public class OrganizationServiceTest {
                     assertThat(org).isNotNull();
                     assertThat(org.getName()).isEqualTo("Add Viewer to Test Organization");
                     assertThat(org.getUserRoles().stream()
-                            .filter(role -> role.getUsername().equals("newEmailWhichShouldntExistAsViewer@usertest.com"))
+                            .filter(role -> role.getUsername().equals("newemailwhichshouldntexistasviewer@usertest.com"))
                             .collect(Collectors.toSet())
                     ).hasSize(1);
 
                     Policy readOrgAppsPolicy = Policy.builder().permission(ORGANIZATION_READ_APPLICATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExistAsViewer@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexistasviewer@usertest.com"))
                             .build();
 
                     Policy readOrgPolicy = Policy.builder().permission(READ_ORGANIZATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExistAsViewer@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexistasviewer@usertest.com"))
                             .build();
 
                     assertThat(org.getPolicies()).isNotEmpty();
@@ -584,7 +610,7 @@ public class OrganizationServiceTest {
 
                     assertThat(datasource.getPolicies()).isNotEmpty();
                     assertThat(datasource.getPolicies()).containsAll(Set.of(manageDatasourcePolicy, readDatasourcePolicy,
-                                                                            executeDatasourcePolicy));
+                            executeDatasourcePolicy));
 
                 })
                 .verifyComplete();
@@ -701,7 +727,7 @@ public class OrganizationServiceTest {
                     UserRole userRole = new UserRole();
                     userRole.setUsername("usertest@usertest.com");
                     userRole.setRoleName("App Viewer");
-                    return userOrganizationService.updateRoleForMember(org.getId(), userRole);
+                    return userOrganizationService.updateRoleForMember(org.getId(), userRole, "http://localhost:8080");
                 });
 
         Mono<Application> applicationAfterRoleChange = organizationMono
@@ -773,7 +799,7 @@ public class OrganizationServiceTest {
                     userRole.setUsername("usertest@usertest.com");
                     // Setting the role name to null ensures that user is deleted from the organization
                     userRole.setRoleName(null);
-                    return userOrganizationService.updateRoleForMember(org.getId(), userRole);
+                    return userOrganizationService.updateRoleForMember(org.getId(), userRole, "http://localhost:8080");
                 });
 
         Mono<Tuple2<Application, Organization>> tupleMono = organizationMono
@@ -831,7 +857,7 @@ public class OrganizationServiceTest {
                     inviteUsersDTO.setOrgId(organization1.getId());
                     inviteUsersDTO.setRoleName(AppsmithRole.ORGANIZATION_VIEWER.getName());
 
-                    return userService.inviteUser(inviteUsersDTO, "http://localhost:8080")
+                    return userService.inviteUsers(inviteUsersDTO, "http://localhost:8080")
                             .collectList();
                 })
                 .cache();
@@ -853,19 +879,19 @@ public class OrganizationServiceTest {
                             .map(userRole -> userRole.getUsername())
                             .filter(username -> !username.equals("api_user"))
                             .collect(Collectors.toSet())
-                    ).containsAll(Set.of("newEmailWhichShouldntExistAsViewer1@usertest.com", "newEmailWhichShouldntExistAsViewer2@usertest.com",
-                            "newEmailWhichShouldntExistAsViewer3@usertest.com"));
+                    ).containsAll(Set.of("newemailwhichshouldntexistasviewer1@usertest.com", "newemailwhichshouldntexistasviewer2@usertest.com",
+                            "newemailwhichshouldntexistasviewer3@usertest.com"));
 
                     Policy readOrgAppsPolicy = Policy.builder().permission(ORGANIZATION_READ_APPLICATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExistAsViewer1@usertest.com",
-                                    "newEmailWhichShouldntExistAsViewer2@usertest.com",
-                                    "newEmailWhichShouldntExistAsViewer3@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexistasviewer1@usertest.com",
+                                    "newemailwhichshouldntexistasviewer2@usertest.com",
+                                    "newemailwhichshouldntexistasviewer3@usertest.com"))
                             .build();
 
                     Policy readOrgPolicy = Policy.builder().permission(READ_ORGANIZATIONS.getValue())
-                            .users(Set.of("api_user", "newEmailWhichShouldntExistAsViewer1@usertest.com",
-                                    "newEmailWhichShouldntExistAsViewer2@usertest.com",
-                                    "newEmailWhichShouldntExistAsViewer3@usertest.com"))
+                            .users(Set.of("api_user", "newemailwhichshouldntexistasviewer1@usertest.com",
+                                    "newemailwhichshouldntexistasviewer2@usertest.com",
+                                    "newemailwhichshouldntexistasviewer3@usertest.com"))
                             .build();
 
                     assertThat(org.getPolicies()).isNotEmpty();
@@ -926,4 +952,94 @@ public class OrganizationServiceTest {
                 .verifyComplete();
     }
 
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void uploadOrganizationLogo_nullFilePart() throws IOException {
+        Mono<Organization> createOrganization = organizationService.create(organization).cache();
+        final Mono<Organization> resultMono = createOrganization
+                .flatMap(organization -> organizationService.uploadLogo(organization.getId(), null));
+
+        StepVerifier.create(resultMono)
+                .expectErrorMatches(throwable -> throwable instanceof AppsmithException &&
+                        throwable.getMessage().equals(AppsmithError.VALIDATION_FAILURE.getMessage("Please upload a valid image.")))
+                .verify();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void uploadOrganizationLogo_largeFilePart() throws IOException {
+        FilePart filepart = Mockito.mock(FilePart.class, Mockito.RETURNS_DEEP_STUBS);
+        Flux<DataBuffer> dataBufferFlux = DataBufferUtils
+                .read(new ClassPathResource("test_assets/OrganizationServiceTest/my_organization_logo_large.png"), new DefaultDataBufferFactory(), 4096);
+        assertThat(dataBufferFlux.count().block()).isGreaterThan((int) Math.ceil(Constraint.ORGANIZATION_LOGO_SIZE_KB/4.0));
+
+        Mockito.when(filepart.content()).thenReturn(dataBufferFlux);
+        Mockito.when(filepart.headers().getContentType()).thenReturn(MediaType.IMAGE_PNG);
+
+        // The pre-requisite of creating an organization has been blocked for code readability
+        // The duration sets an upper limit for this test to run
+        String orgId = organizationService.create(organization).blockOptional(Duration.ofSeconds(3)).map(Organization::getId).orElse(null);
+        assertThat(orgId).isNotNull();
+
+        final Mono<Organization> resultMono = organizationService.uploadLogo(orgId, filepart);
+
+        StepVerifier.create(resultMono)
+                .expectErrorMatches(throwable -> throwable instanceof AppsmithException &&
+                        throwable.getMessage().equals(AppsmithError.PAYLOAD_TOO_LARGE.getMessage(Constraint.ORGANIZATION_LOGO_SIZE_KB)))
+                .verify();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void testDeleteLogo_invalidOrganization() {
+        Mono<Organization> deleteLogo = organizationService.deleteLogo("");
+        StepVerifier.create(deleteLogo)
+                .expectErrorMatches(throwable -> throwable instanceof AppsmithException &&
+                        throwable.getMessage().equals(AppsmithError.NO_RESOURCE_FOUND.getMessage(FieldName.ORGANIZATION, "")))
+                .verify();
+    }
+
+    @Test
+    @WithUserDetails(value = "api_user")
+    public void testUpdateAndDeleteLogo_validLogo() throws IOException {
+        FilePart filepart = Mockito.mock(FilePart.class, Mockito.RETURNS_DEEP_STUBS);
+        Flux<DataBuffer> dataBufferFlux = DataBufferUtils
+                .read(new ClassPathResource("test_assets/OrganizationServiceTest/my_organization_logo.png"), new DefaultDataBufferFactory(), 4096).cache();
+        assertThat(dataBufferFlux.count().block()).isLessThanOrEqualTo((int) Math.ceil(Constraint.ORGANIZATION_LOGO_SIZE_KB/4.0));
+
+        Mockito.when(filepart.content()).thenReturn(dataBufferFlux);
+        Mockito.when(filepart.headers().getContentType()).thenReturn(MediaType.IMAGE_PNG);
+
+        Mono<Organization> createOrganization = organizationService.create(organization).cache();
+
+        final Mono<Tuple2<Organization, Asset>> resultMono = createOrganization
+                .flatMap(organization -> organizationService.uploadLogo(organization.getId(), filepart)
+                        .flatMap(organizationWithLogo -> Mono.zip(
+                                Mono.just(organizationWithLogo),
+                                assetRepository.findById(organizationWithLogo.getLogoAssetId()))
+                        ));
+
+        StepVerifier.create(resultMono)
+                .assertNext(tuple -> {
+                    final Organization organizationWithLogo = tuple.getT1();
+                    assertThat(organizationWithLogo.getLogoUrl()).isNotNull();
+                    assertThat(organizationWithLogo.getLogoUrl()).contains(organizationWithLogo.getLogoAssetId());
+
+                    final Asset asset = tuple.getT2();
+                    assertThat(asset).isNotNull();
+                    DataBuffer buffer = DataBufferUtils.join(dataBufferFlux).block(Duration.ofSeconds(3));
+                    byte[] res = new byte[buffer.readableByteCount()];
+                    buffer.read(res);
+                    assertThat(asset.getData()).isEqualTo(res);
+                })
+                .verifyComplete();
+
+        Mono<Organization> deleteLogo = createOrganization.flatMap(organization -> organizationService.deleteLogo(organization.getId()));
+        StepVerifier.create(deleteLogo)
+                .assertNext(x -> {
+                    assertThat(x.getLogoAssetId()).isNull();
+                    log.debug("Deleted logo for org: {}", x.getId());
+                })
+                .verifyComplete();
+    }
 }

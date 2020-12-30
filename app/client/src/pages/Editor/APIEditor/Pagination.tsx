@@ -9,7 +9,7 @@ import CalloutComponent from "components/designSystems/blueprint/CalloutComponen
 import { PaginationType } from "entities/Action";
 
 interface PaginationProps {
-  onTestClick: Function;
+  onTestClick: (test?: "PREV" | "NEXT") => void;
   paginationType: PaginationType;
 }
 const PaginationFieldWrapper = styled.div`
@@ -19,7 +19,7 @@ const PaginationFieldWrapper = styled.div`
 
 const ExampleApi = styled.p`
   color: #ef7b63;
-  font-family: ${props => props.theme.fonts.code};
+  font-family: ${(props) => props.theme.fonts.code};
 `;
 
 const StyledLabel = styled.label`

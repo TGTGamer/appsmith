@@ -1,6 +1,7 @@
 package com.appsmith.server.services;
 
 import com.appsmith.external.models.AuthenticationDTO;
+import com.appsmith.external.pluginExceptions.StaleConnectionException;
 import com.appsmith.external.plugins.PluginExecutor;
 import com.appsmith.server.domains.Datasource;
 import com.appsmith.server.domains.DatasourceContext;
@@ -11,8 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.appsmith.server.acl.AclPermission.EXECUTE_DATASOURCES;
 
@@ -36,7 +39,7 @@ public class DatasourceContextServiceImpl implements DatasourceContextService {
         this.pluginService = pluginService;
         this.pluginExecutorHelper = pluginExecutorHelper;
         this.encryptionService = encryptionService;
-        this.datasourceContextMap = new HashMap<>();
+        this.datasourceContextMap = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -52,7 +55,11 @@ public class DatasourceContextServiceImpl implements DatasourceContextService {
         if (datasourceId == null) {
             log.debug("This is a dry run or an embedded datasource. The datasource context would not exist in this scenario");
 
-        } else if (datasourceContextMap.get(datasourceId) != null && !isStale) {
+        } else if (datasourceContextMap.get(datasourceId) != null
+                // The following condition happens when there's a timout in the middle of destroying a connection and
+                // the reactive flow interrupts, resulting in the destroy operation not completing.
+                && datasourceContextMap.get(datasourceId).getConnection() != null
+                && !isStale) {
             log.debug("resource context exists. Returning the same.");
             return Mono.just(datasourceContextMap.get(datasourceId));
         }
@@ -85,7 +92,7 @@ public class DatasourceContextServiceImpl implements DatasourceContextService {
                         datasource1.getDatasourceConfiguration().setAuthentication(decryptSensitiveFields(authentication));
                     }
 
-                    PluginExecutor pluginExecutor = objects.getT2();
+                    PluginExecutor<Object> pluginExecutor = objects.getT2();
 
                     if (isStale) {
                         final Object connection = datasourceContextMap.get(datasourceId).getConnection();
@@ -123,7 +130,26 @@ public class DatasourceContextServiceImpl implements DatasourceContextService {
     }
 
     @Override
+    public <T> Mono<T> retryOnce(Datasource datasource, Function<DatasourceContext, Mono<T>> task) {
+        final Mono<T> taskRunnerMono = Mono.justOrEmpty(datasource)
+                .flatMap(this::getDatasourceContext)
+                // Now that we have the context (connection details), call the task.
+                .flatMap(task);
+
+        return taskRunnerMono
+                .onErrorResume(StaleConnectionException.class, error -> {
+                    log.info("Looks like the connection is stale. Retrying with a fresh context.");
+                    return deleteDatasourceContext(datasource.getId())
+                            .then(taskRunnerMono);
+                });
+    }
+
+    @Override
     public Mono<DatasourceContext> deleteDatasourceContext(String datasourceId) {
+        if (datasourceId == null) {
+            return Mono.empty();
+        }
+
         DatasourceContext datasourceContext = datasourceContextMap.get(datasourceId);
         if (datasourceContext == null) {
             // No resource context exists for this resource. Return void.
@@ -137,7 +163,7 @@ public class DatasourceContextServiceImpl implements DatasourceContextService {
                 )
                 .map(tuple -> {
                     final Datasource datasource = tuple.getT1();
-                    final PluginExecutor pluginExecutor = tuple.getT2();
+                    final PluginExecutor<Object> pluginExecutor = tuple.getT2();
                     log.info("Clearing datasource context for datasource ID {}.", datasource.getId());
                     pluginExecutor.datasourceDestroy(datasourceContext.getConnection());
                     return datasourceContextMap.remove(datasourceId);
@@ -145,10 +171,15 @@ public class DatasourceContextServiceImpl implements DatasourceContextService {
     }
 
     @Override
-    public AuthenticationDTO decryptSensitiveFields(AuthenticationDTO authenticationDTO) {
-        if (authenticationDTO != null && authenticationDTO.getPassword() != null) {
-            authenticationDTO.setPassword(encryptionService.decryptString(authenticationDTO.getPassword()));
+    public AuthenticationDTO decryptSensitiveFields(AuthenticationDTO authentication) {
+        if (authentication != null && authentication.isEncrypted()) {
+            Map<String, String> decryptedFields = authentication.getEncryptionFields().entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> encryptionService.decryptString(e.getValue())));
+            authentication.setEncryptionFields(decryptedFields);
+            authentication.setIsEncrypted(false);
         }
-        return authenticationDTO;
+        return authentication;
     }
 }

@@ -9,7 +9,7 @@ import AnalyticsUtil from "utils/AnalyticsUtil";
 const PageView = styled.div<{ width: number }>`
   height: 100%;
   position: relative;
-  width: ${props => props.width}px;
+  width: ${(props) => props.width}px;
   margin: 0 auto;
 `;
 
@@ -17,6 +17,7 @@ type AppPageProps = {
   dsl: ContainerWidgetProps<WidgetProps>;
   pageName?: string;
   pageId?: string;
+  appName?: string;
 };
 
 export const AppPage = (props: AppPageProps) => {
@@ -24,6 +25,7 @@ export const AppPage = (props: AppPageProps) => {
     AnalyticsUtil.logEvent("PAGE_LOAD", {
       pageName: props.pageName,
       pageId: props.pageId,
+      appName: props.appName,
       mode: "VIEW",
     });
   }, [props.pageId, props.pageName]);

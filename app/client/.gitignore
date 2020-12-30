@@ -30,8 +30,15 @@ yarn-error.log*
 .storybook-out/
 cypress/videos
 cypress/screenshots
+/cypress.env.json
 results/
+
 
 /docker/*.pem
 /docker/nginx.conf
+/docker/nginx-root.conf
 
+storybook-static/*
+build-storybook.log
+
+.eslintcache

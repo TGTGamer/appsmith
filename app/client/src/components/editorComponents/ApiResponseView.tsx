@@ -27,7 +27,6 @@ const ResponseWrapper = styled.div`
   position: relative;
   flex: 1;
   height: 100%;
-  overflow-y: scroll;
 `;
 const ResponseMetaInfo = styled.div`
   display: flex;
@@ -37,8 +36,19 @@ const ResponseMetaInfo = styled.div`
   }
 `;
 
+const ResponseMetaWrapper = styled.div`
+  align-items: center;
+  padding: 6px 9px;
+  display: flex;
+  border-top: transparent 5px solid;
+
+  div:nth-child(1) {
+    flex: 1;
+  }
+`;
+
 const StatusCodeText = styled(BaseText)<{ code: string }>`
-  color: ${props =>
+  color: ${(props) =>
     props.code.match(/2\d\d/) ? props.theme.colors.primaryOld : Colors.RED};
 `;
 
@@ -113,7 +123,7 @@ const FailedMessageContainer = styled.div`
   padding-top: 10px;
   padding-bottom: 7px;
   padding-left: 15px;
-  font-family: ${props => props.theme.fonts.text};
+  font-family: ${(props) => props.theme.fonts.text};
   font-style: normal;
   font-weight: 500;
   font-size: 14px;
@@ -128,6 +138,7 @@ const FailedMessageContainer = styled.div`
 `;
 
 const TabbedViewWrapper = styled.div`
+  padding-top: 12px;
   height: calc(100% - 30px);
 `;
 
@@ -235,31 +246,31 @@ const ApiResponseView = (props: Props) => {
       {isRunning && (
         <LoadingOverlayScreen>Sending Request</LoadingOverlayScreen>
       )}
-      <FormRow>
-        <React.Fragment>
-          {response.statusCode && (
-            <StatusCodeText
-              accent="secondary"
-              code={response.statusCode.toString()}
-            >
-              Status: {response.statusCode}
-            </StatusCodeText>
-          )}
-          <ResponseMetaInfo>
-            {response.duration && (
-              <BaseText accent="secondary">
-                Time: {response.duration} ms
-              </BaseText>
-            )}
-            {response.size && (
-              <BaseText accent="secondary">
-                Size: {formatBytes(parseInt(response.size))}
-              </BaseText>
-            )}
-          </ResponseMetaInfo>
-        </React.Fragment>
-      </FormRow>
       <TabbedViewWrapper>
+        {response.statusCode && (
+          <ResponseMetaWrapper>
+            {response.statusCode && (
+              <StatusCodeText
+                accent="secondary"
+                code={response.statusCode.toString()}
+              >
+                Status: {response.statusCode}
+              </StatusCodeText>
+            )}
+            <ResponseMetaInfo>
+              {response.duration && (
+                <BaseText accent="secondary">
+                  Time: {response.duration} ms
+                </BaseText>
+              )}
+              {response.size && (
+                <BaseText accent="secondary">
+                  Size: {formatBytes(parseInt(response.size))}
+                </BaseText>
+              )}
+            </ResponseMetaInfo>
+          </ResponseMetaWrapper>
+        )}
         <BaseTabbedView
           overflow
           tabs={tabs}

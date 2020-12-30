@@ -52,10 +52,13 @@ interface PostDataProps {
   actionConfiguration: any;
   displayFormat: any;
   actionConfigurationHeaders?: any;
-  change: Function;
-  onDisplayFormatChange: Function;
+  change: any;
+  onDisplayFormatChange: (headers: any[]) => void;
   apiId: string;
-  setDisplayFormat: Function;
+  setDisplayFormat: (
+    apiId: string,
+    displayFormat: { label: string; value: string },
+  ) => void;
   dataTreePath: string;
 }
 
@@ -90,6 +93,8 @@ const PostBodyData = (props: Props) => {
 
             const elementsIndex = actionConfigurationHeaders.findIndex(
               (element: { key: string; value: string }) =>
+                element &&
+                element.key &&
                 element.key.trim().toLowerCase() === CONTENT_TYPE,
             );
 
@@ -138,6 +143,7 @@ const PostBodyData = (props: Props) => {
             name="actionConfiguration.bodyFormData"
             dataTreePath={`${dataTreePath}.bodyFormData`}
             label=""
+            pushFields
           />
         </React.Fragment>
       )}
@@ -169,11 +175,14 @@ const PostBodyData = (props: Props) => {
 const selector = formValueSelector(API_EDITOR_FORM_NAME);
 
 const mapDispatchToProps = (dispatch: any) => ({
-  onDisplayFormatChange: (value: []) =>
+  onDisplayFormatChange: (value: any[]) =>
     dispatch(
       change(API_EDITOR_FORM_NAME, "actionConfiguration.headers", value),
     ),
-  setDisplayFormat: (id: string, displayFormat: string) => {
+  setDisplayFormat: (
+    id: string,
+    displayFormat: { label: string; value: string },
+  ) => {
     dispatch({
       type: ReduxActionTypes.SET_EXTRA_FORMDATA,
       payload: {
@@ -193,7 +202,8 @@ export default connect((state: AppState) => {
   let contentType;
   if (headers) {
     contentType = headers.find(
-      (header: any) => header.key.toLowerCase() === CONTENT_TYPE,
+      (header: any) =>
+        header && header.key && header.key.toLowerCase() === CONTENT_TYPE,
     );
   }
 

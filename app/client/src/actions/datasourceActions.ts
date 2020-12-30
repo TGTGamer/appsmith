@@ -1,13 +1,6 @@
 import { ReduxAction, ReduxActionTypes } from "constants/ReduxActionConstants";
 import { CreateDatasourceConfig, Datasource } from "api/DatasourcesApi";
 
-export const createDatasource = (payload: CreateDatasourceConfig) => {
-  return {
-    type: ReduxActionTypes.CREATE_DATASOURCE_INIT,
-    payload,
-  };
-};
-
 export const createDatasourceFromForm = (payload: CreateDatasourceConfig) => {
   return {
     type: ReduxActionTypes.CREATE_DATASOURCE_FROM_FORM_INIT,
@@ -15,15 +8,42 @@ export const createDatasourceFromForm = (payload: CreateDatasourceConfig) => {
   };
 };
 
-export const updateDatasource = (
-  payload: Datasource,
-  reinitializeForm?: boolean,
-) => {
+export const updateDatasource = (payload: Datasource) => {
   return {
     type: ReduxActionTypes.UPDATE_DATASOURCE_INIT,
-    payload: { datasource: payload, reinitializeForm: !!reinitializeForm },
+    payload,
   };
 };
+
+export const fetchDatasourceStructure = (id: string) => {
+  return {
+    type: ReduxActionTypes.FETCH_DATASOURCE_STRUCTURE_INIT,
+    payload: {
+      id,
+    },
+  };
+};
+
+export const expandDatasourceEntity = (id: string) => {
+  return {
+    type: ReduxActionTypes.EXPAND_DATASOURCE_ENTITY,
+    payload: id,
+  };
+};
+
+export const refreshDatasourceStructure = (id: string) => {
+  return {
+    type: ReduxActionTypes.REFRESH_DATASOURCE_STRUCTURE_INIT,
+    payload: {
+      id,
+    },
+  };
+};
+
+export const saveDatasourceName = (payload: { id: string; name: string }) => ({
+  type: ReduxActionTypes.SAVE_DATASOURCE_NAME,
+  payload: payload,
+});
 
 export const changeDatasource = (payload: Datasource) => {
   return {
@@ -53,6 +73,16 @@ export const deleteDatasource = (payload: Partial<Datasource>) => {
   };
 };
 
+export const setDatsourceEditorMode = (payload: {
+  id: string;
+  viewMode: boolean;
+}) => {
+  return {
+    type: ReduxActionTypes.SET_DATASOURCE_EDITOR_MODE,
+    payload,
+  };
+};
+
 export const fetchDatasources = () => {
   return {
     type: ReduxActionTypes.FETCH_DATASOURCES_INIT,
@@ -64,15 +94,6 @@ export const selectPlugin = (pluginId: string) => {
     type: ReduxActionTypes.SELECT_PLUGIN,
     payload: {
       pluginId,
-    },
-  };
-};
-
-export const storeDatastoreRefs = (refsList: {}) => {
-  return {
-    type: ReduxActionTypes.STORE_DATASOURCE_REFS,
-    payload: {
-      refsList,
     },
   };
 };
@@ -94,7 +115,6 @@ export const storeAsDatasource = () => {
 };
 
 export default {
-  createDatasource,
   fetchDatasources,
   initDatasourcePane,
   selectPlugin,

@@ -20,12 +20,13 @@ import {
   LIGHTNING_MENU_API_CREATE_NEW,
 } from "constants/messages";
 import { Skin } from "constants/DefaultTheme";
+import { ReduxAction } from "constants/ReduxActionConstants";
 
 export const getApiOptions = (
   skin: Skin,
   apis: RestAction[],
   pageId: string,
-  dispatch: Function,
+  dispatch: (action: ReduxAction<unknown>) => void,
   updateDynamicInputValue: (value: string, cursor?: number) => void,
 ) => ({
   sections: [
@@ -43,13 +44,13 @@ export const getApiOptions = (
             />
           ),
           onSelect: () => {
-            dispatch(createNewApiAction(pageId));
+            dispatch(createNewApiAction(pageId, "LIGHTNING_MENU"));
           },
         },
       ],
     },
     {
-      options: apis.map(api => ({
+      options: apis.map((api) => ({
         content: api.name,
         onSelect: () => {
           updateDynamicInputValue(`{{${api.name}.data}}`);
@@ -61,7 +62,7 @@ export const getApiOptions = (
     text: LIGHTNING_MENU_DATA_API,
   },
   openDirection: Directions.RIGHT,
-  openOnHover: false,
+  openOnHover: true,
   skin: skin,
   modifiers: {
     offset: {
@@ -74,7 +75,7 @@ export const getQueryOptions = (
   skin: Skin,
   queries: RestAction[],
   pageId: string,
-  dispatch: Function,
+  dispatch: (action: ReduxAction<unknown>) => void,
   updateDynamicInputValue: (value: string, cursor?: number) => void,
 ) => ({
   sections: [
@@ -92,13 +93,13 @@ export const getQueryOptions = (
             />
           ),
           onSelect: () => {
-            dispatch(createNewQueryAction(pageId));
+            dispatch(createNewQueryAction(pageId, "LIGHTNING_MENU"));
           },
         },
       ],
     },
     {
-      options: queries.map(query => ({
+      options: queries.map((query) => ({
         content: query.name,
         onSelect: () => {
           updateDynamicInputValue(`{{${query.name}.data}}`);
@@ -110,7 +111,7 @@ export const getQueryOptions = (
     text: LIGHTNING_MENU_DATA_QUERY,
   },
   openDirection: Directions.RIGHT,
-  openOnHover: false,
+  openOnHover: true,
   skin: skin,
   modifiers: {
     offset: {
@@ -126,7 +127,7 @@ export const getWidgetOptions = (
 ) => ({
   sections: [
     {
-      options: widgets.map(widget => ({
+      options: widgets.map((widget) => ({
         content: widget.widgetName,
         disabled: false,
         shouldCloseDropdown: true,
@@ -140,7 +141,7 @@ export const getWidgetOptions = (
     text: LIGHTNING_MENU_DATA_WIDGET,
   },
   openDirection: Directions.RIGHT,
-  openOnHover: false,
+  openOnHover: true,
   skin: skin,
   modifiers: {
     offset: {
@@ -154,7 +155,7 @@ export const getLightningMenuOptions = (
   queries: RestAction[],
   widgets: WidgetProps[],
   pageId: string,
-  dispatch: Function,
+  dispatch: (action: ReduxAction<unknown>) => void,
   skin: Skin,
   updateDynamicInputValue: (value: string, cursor?: number) => void,
 ) => {

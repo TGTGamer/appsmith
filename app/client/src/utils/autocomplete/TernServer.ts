@@ -1,10 +1,12 @@
-/* eslint-disable @typescript-eslint/ban-ts-ignore */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // Heavily inspired from https://github.com/codemirror/CodeMirror/blob/master/addon/tern/tern.js
 import { DataTree } from "entities/DataTree/dataTreeFactory";
 import tern, { Server, Def } from "tern";
 import ecma from "tern/defs/ecmascript.json";
 import lodash from "constants/defs/lodash.json";
 import base64 from "constants/defs/base64-js.json";
+import moment from "constants/defs/moment.json";
+import xmlJs from "constants/defs/xmlParser.json";
 import { dataTreeTypeDefCreator } from "utils/autocomplete/dataTreeTypeDefCreator";
 import CodeMirror, { Hint, Pos, cmpPos } from "codemirror";
 import {
@@ -12,7 +14,7 @@ import {
   isDynamicValue,
 } from "utils/DynamicBindingUtils";
 
-const DEFS = [ecma, lodash, base64];
+const DEFS = [ecma, lodash, base64, moment, xmlJs];
 const bigDoc = 250;
 const cls = "CodeMirror-Tern-";
 const hintDelay = 1700;
@@ -81,16 +83,11 @@ class TernServer {
 
   updateDef(name: string, def: Def) {
     this.server.deleteDefs(name);
-    // @ts-ignore
+    // @ts-ignore: No types available
     this.server.addDefs(def, true);
   }
 
-  requestCallback(
-    error: any,
-    data: any,
-    cm: CodeMirror.Editor,
-    resolve: Function,
-  ) {
+  requestCallback(error: any, data: any, cm: CodeMirror.Editor, resolve: any) {
     if (error) return this.showError(cm, error);
     if (data.completions.length === 0) {
       return this.showError(cm, "No suggestions");
@@ -173,7 +170,7 @@ class TernServer {
   }
 
   getHint(cm: CodeMirror.Editor) {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       this.request(
         cm,
         {
@@ -193,7 +190,7 @@ class TernServer {
   sortCompletions(completions: Completion[]) {
     // Add data tree completions before others
     const dataTreeCompletions = completions
-      .filter(c => c.origin === "dataTree")
+      .filter((c) => c.origin === "dataTree")
       .sort((a: Completion, b: Completion) => {
         if (a.type === "FUNCTION" && b.type !== "FUNCTION") {
           return 1;
@@ -202,9 +199,9 @@ class TernServer {
         }
         return a.text.toLowerCase().localeCompare(b.text.toLowerCase());
       });
-    const docCompletetions = completions.filter(c => c.origin === "[doc]");
+    const docCompletetions = completions.filter((c) => c.origin === "[doc]");
     const otherCompletions = completions.filter(
-      c => c.origin !== "dataTree" && c.origin !== "[doc]",
+      (c) => c.origin !== "dataTree" && c.origin !== "[doc]",
     );
     return [...docCompletetions, ...dataTreeCompletions, ...otherCompletions];
   }
@@ -230,11 +227,7 @@ class TernServer {
     return cls + "completion " + cls + "completion-" + suffix;
   }
 
-  showContextInfo(
-    cm: CodeMirror.Editor,
-    queryName: string,
-    callbackFn?: Function,
-  ) {
+  showContextInfo(cm: CodeMirror.Editor, queryName: string, callbackFn?: any) {
     this.request(cm, { type: queryName }, (error, data) => {
       if (error) return this.showError(cm, error);
       const tip = this.elt(
@@ -246,10 +239,10 @@ class TernServer {
       if (data.url) {
         tip.appendChild(document.createTextNode(" "));
         const child = tip.appendChild(this.elt("a", null, "[docs]"));
-        // @ts-ignore
+        // @ts-ignore: No types available
         child.href = data.url;
 
-        // @ts-ignore
+        // @ts-ignore: No types available
         child.target = "_blank";
       }
       this.tempTooltip(cm, tip);
@@ -275,7 +268,7 @@ class TernServer {
   ) {
     const doc = this.findDoc(cm.getDoc());
     const request = this.buildRequest(doc, query, pos);
-    // @ts-ignore
+    // @ts-ignore: No types available
     this.server.request(request, callbackFn);
   }
 
@@ -423,9 +416,9 @@ class TernServer {
   sendDoc(doc: TernDoc) {
     this.server.request(
       {
-        // @ts-ignore
+        // @ts-ignore: No types available
         files: [
-          // @ts-ignore
+          // @ts-ignore: No types available
           {
             type: "full",
             name: doc.name,
@@ -454,7 +447,7 @@ class TernServer {
     const cursor = doc.doc.getCursor();
     const value = this.lineValue(doc);
     const stringSegments = getDynamicStringSegments(value);
-    const dynamicStrings = stringSegments.filter(segment => {
+    const dynamicStrings = stringSegments.filter((segment) => {
       if (isDynamicValue(segment)) {
         const index = value.indexOf(segment);
 
@@ -525,12 +518,12 @@ class TernServer {
   tempTooltip(cm: CodeMirror.Editor, content: HTMLElement | string) {
     if (cm.state.ternTooltip) this.remove(cm.state.ternTooltip);
     if (cm.state.completionActive) {
-      // @ts-ignore
+      // @ts-ignore: No types available
       cm.closeHint();
     }
     const where = cm.cursorCoords();
     const tip = (cm.state.ternTooltip = this.makeTooltip(
-      // @ts-ignore
+      // @ts-ignore: No types available
       where.right + 1,
       where.bottom,
       content,
@@ -551,7 +544,7 @@ class TernServer {
     });
     CodeMirror.on(tip, "mouseout", function(e: MouseEvent) {
       const related = e.relatedTarget;
-      // @ts-ignore
+      // @ts-ignore: No types available
       if (!related || !CodeMirror.contains(tip, related)) {
         if (old) clear();
         else mouseOnTip = false;

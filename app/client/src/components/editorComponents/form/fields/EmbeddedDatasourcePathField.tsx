@@ -143,12 +143,11 @@ class EmbeddedDatasourcePathComponent extends React.Component<Props> {
     const { datasourceList } = this.props;
     return () => {
       return {
-        showHint: (editor: CodeMirror.Editor) => {
+        trigger: (editor: CodeMirror.Editor) => {
           const value = editor.getValue();
           const parsed = this.parseInputValue(value);
           if (
             parsed.path === "" &&
-            !!value &&
             this.props.datasource &&
             !("id" in this.props.datasource)
           ) {
@@ -156,14 +155,15 @@ class EmbeddedDatasourcePathComponent extends React.Component<Props> {
               completeSingle: false,
               hint: () => {
                 const list = datasourceList
-                  .filter(datasource =>
+                  .filter((datasource) =>
                     datasource.datasourceConfiguration.url.includes(
                       parsed.datasourceUrl,
                     ),
                   )
-                  .map(datasource => ({
+                  .map((datasource) => ({
                     text: datasource.datasourceConfiguration.url,
                     data: datasource,
+                    className: "datasource-hint",
                   }));
                 const hints = {
                   list,
@@ -181,6 +181,9 @@ class EmbeddedDatasourcePathComponent extends React.Component<Props> {
               },
             });
           }
+        },
+        showHint: () => {
+          return;
         },
       };
     };
@@ -228,17 +231,33 @@ const mapStateToProps = (
   state: AppState,
   ownProps: { pluginId: string },
 ): ReduxStateProps => {
+  const datasourceFromAction = apiFormValueSelector(state, "datasource");
+  let datasourceMerged = datasourceFromAction;
+  // Todo: fix this properly later in #2164
+  if (datasourceFromAction && "id" in datasourceFromAction) {
+    const datasourceFromDataSourceList = state.entities.datasources.list.find(
+      (d) => d.id === datasourceFromAction.id,
+    );
+    if (datasourceFromDataSourceList) {
+      datasourceMerged = _.merge(
+        {},
+        datasourceFromAction,
+        datasourceFromDataSourceList,
+      );
+    }
+  }
+
   return {
     orgId: state.ui.orgs.currentOrg.id,
-    datasource: apiFormValueSelector(state, "datasource"),
+    datasource: datasourceMerged,
     datasourceList: state.entities.datasources.list.filter(
-      d => d.pluginId === ownProps.pluginId && d.isValid,
+      (d) => d.pluginId === ownProps.pluginId && d.isValid,
     ),
   };
 };
 
-const mapDispatchToProps = (dispatch: Function): ReduxDispatchProps => ({
-  updateDatasource: datasource =>
+const mapDispatchToProps = (dispatch: any): ReduxDispatchProps => ({
+  updateDatasource: (datasource) =>
     dispatch(change(API_EDITOR_FORM_NAME, "datasource", datasource)),
 });
 
@@ -248,7 +267,7 @@ const EmbeddedDatasourcePathConnectedComponent = connect(
 )(EmbeddedDatasourcePathComponent);
 
 const EmbeddedDatasourcePathField = (
-  props: BaseFieldProps & { pluginId: string },
+  props: BaseFieldProps & { pluginId: string; placeholder?: string },
 ) => {
   return (
     <Field component={EmbeddedDatasourcePathConnectedComponent} {...props} />

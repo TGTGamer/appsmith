@@ -20,8 +20,6 @@ public interface ApplicationService extends CrudService<Application, String> {
 
     Mono<Application> findByName(String name, AclPermission permission);
 
-    Mono<Boolean> publish(String applicationId);
-
     Mono<Application> save(Application application);
 
     Mono<Application> createDefault(Application object);
@@ -29,4 +27,8 @@ public interface ApplicationService extends CrudService<Application, String> {
     Mono<Application> archive(Application application);
 
     Mono<Application> changeViewAccess (String id, ApplicationAccessDTO applicationAccessDTO);
+
+    Flux<Application> findAllApplicationsByOrganizationId(String organizationId);
+
+    Mono<Application> getApplicationInViewMode(String applicationId);
 }

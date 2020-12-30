@@ -1,6 +1,5 @@
 import TernServer from "./TernServer";
 import { MockCodemirrorEditor } from "../../../test/__mocks__/CodeMirrorEditorMock";
-jest.mock("jsExecution/RealmExecutor");
 
 describe("Tern server", () => {
   it("Check whether the correct value is being sent to tern", () => {
@@ -42,7 +41,7 @@ describe("Tern server", () => {
       },
     ];
 
-    testCases.forEach(testCase => {
+    testCases.forEach((testCase) => {
       const value = ternServer.getFocusedDynamicValue(testCase.input);
       expect(value).toBe(testCase.expectedOutput);
     });
@@ -96,7 +95,7 @@ describe("Tern server", () => {
     });
   });
 
-  it(`Check whether the position is evaluated correctly for placing the selected 
+  it(`Check whether the position is evaluated correctly for placing the selected
       autocomplete value`, () => {
     const ternServer = new TernServer({});
 

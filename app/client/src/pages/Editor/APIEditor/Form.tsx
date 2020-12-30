@@ -25,18 +25,20 @@ import EmbeddedDatasourcePathField from "components/editorComponents/form/fields
 import { AppState } from "reducers";
 import { getApiName } from "selectors/formSelectors";
 import ActionNameEditor from "components/editorComponents/ActionNameEditor";
+import ActionSettings from "pages/Editor/ActionSettings";
+import { apiActionSettingsConfig } from "mockResponses/ActionSettings";
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  height: calc(100vh - ${props => props.theme.headerHeight});
+  height: calc(100vh - ${(props) => props.theme.headerHeight});
   overflow: auto;
   width: 100%;
   ${FormLabel} {
-    padding: ${props => props.theme.spaces[3]}px;
+    padding: ${(props) => props.theme.spaces[3]}px;
   }
   ${FormRow} {
-    padding: ${props => props.theme.spaces[2]}px;
+    padding: ${(props) => props.theme.spaces[2]}px;
     & > * {
       margin-right: 10px;
     }
@@ -91,7 +93,7 @@ const TabbedViewContainer = styled.div`
 `;
 
 export const BindingText = styled.span`
-  color: ${props => props.theme.colors.bindingTextDark};
+  color: ${(props) => props.theme.colors.bindingTextDark};
   font-weight: 700;
 `;
 
@@ -111,6 +113,13 @@ const RequestParamsWrapper = styled.div`
   padding-right: 10px;
 `;
 
+const SettingsWrapper = styled.div`
+  padding-left: 15px;
+  ${FormLabel} {
+    padding: 0px;
+  }
+`;
+
 const HeadersSection = styled.div`
   margin-bottom: 32px;
 `;
@@ -124,7 +133,7 @@ interface APIFormProps {
   paginationType: PaginationType;
   appName: string;
   httpMethodFromForm: string;
-  actionConfigurationBody: object | string;
+  actionConfigurationBody: Record<string, unknown> | string;
   actionConfigurationHeaders?: any;
   actionName: string;
   apiId: string;
@@ -192,11 +201,13 @@ const ApiEditorForm: React.FC<Props> = (props: Props) => {
             name="actionConfiguration.httpMethod"
             className="t--apiFormHttpMethod"
             options={HTTP_METHOD_OPTIONS}
+            isSearchable={false}
           />
           <DatasourceWrapper className="t--dataSourceField">
             <EmbeddedDatasourcePathField
               name="actionConfiguration.path"
               pluginId={pluginId}
+              placeholder="https://mock-api.appsmith.com/users"
             />
           </DatasourceWrapper>
         </FormRow>
@@ -228,14 +239,12 @@ const ApiEditorForm: React.FC<Props> = (props: Props) => {
                         actionConfig={actionConfigurationHeaders}
                         placeholder="Value"
                         dataTreePath={`${actionName}.config.headers`}
-                        pushFields
                       />
                     </HeadersSection>
                     <KeyValueFieldArray
                       name="actionConfiguration.queryParameters"
                       label="Params"
                       dataTreePath={`${actionName}.config.queryParameters`}
-                      pushFields
                     />
                     {allowPostBody && (
                       <PostBodyData
@@ -256,6 +265,18 @@ const ApiEditorForm: React.FC<Props> = (props: Props) => {
                     onTestClick={props.onRunClick}
                     paginationType={props.paginationType}
                   />
+                ),
+              },
+              {
+                key: "settings",
+                title: "Settings",
+                panelComponent: (
+                  <SettingsWrapper>
+                    <ActionSettings
+                      actionSettingsConfig={apiActionSettingsConfig}
+                      formName={API_EDITOR_FORM_NAME}
+                    />
+                  </SettingsWrapper>
                 ),
               },
             ]}

@@ -24,14 +24,13 @@ import {
 const Wrapper = styled.div`
   .dynamic-text-field {
     border-radius: 4px;
-    border: 1px solid #d0d7dd;
     font-size: 14px;
-    height: calc(100vh / 4);
+    min-height: calc(100vh / 4);
   }
 
   && {
     .CodeMirror-lines {
-      padding: 16px 20px;
+      padding: 10px;
     }
   }
 `;
@@ -72,7 +71,7 @@ class DynamicTextControl extends BaseControl<
       <Wrapper>
         {showTemplate ? (
           <TemplateMenu
-            createTemplate={templateString => {
+            createTemplate={(templateString) => {
               this.setState(
                 {
                   showTemplateMenu: false,
@@ -99,7 +98,7 @@ class DynamicTextControl extends BaseControl<
 
 export interface DynamicTextFieldProps extends ControlProps {
   actionName: string;
-  createTemplate: Function;
+  createTemplate: (template: any) => any;
   pluginId: string;
   responseType: string;
 }

@@ -6,11 +6,9 @@ import { getPluginTemplates } from "selectors/entitiesSelector";
 
 const Container = styled.div`
   display: flex;
-  height: 185px;
   padding: 16px 24px;
   flex: 1;
   border-radius: 4px;
-  border: 1px solid #d0d7dd;
   flex-direction: column;
   color: #4e5d78;
 `;
@@ -72,11 +70,11 @@ class TemplateMenu extends React.Component<Props> {
     return (
       <Container
         className="t--template-menu"
-        ref={input => {
+        ref={(input) => {
           this.nameInput = input;
         }}
         tabIndex={0}
-        onKeyPress={e => {
+        onKeyPress={(e) => {
           e.preventDefault();
 
           if (e.key === "Enter") {
@@ -89,13 +87,13 @@ class TemplateMenu extends React.Component<Props> {
           Press enter to start with a blank state or select a template.
         </div>
         <div style={{ marginTop: "6px" }}>
-          {Object.entries(pluginTemplates).map(template => {
+          {Object.entries(pluginTemplates).map((template) => {
             const templateKey = template[0];
 
             return (
               <Row
                 key={templateKey}
-                onClick={e => {
+                onClick={(e) => {
                   const template = this.fetchTemplate(templateKey);
                   createTemplate(template);
                   e.stopPropagation();
