@@ -14,8 +14,10 @@
   "runners": [
     {
       "root": ".",
-      "projectType": "other",
-      "versioning": "other",
+      "versioning": {
+        "source": "milestones",
+        "type": "SemVer"
+      },
       "prereleaseName": "alpha",
       "issue": {
         "labels": {
