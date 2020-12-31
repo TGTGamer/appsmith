@@ -15,7 +15,7 @@
     {
       "root": ".",
       "versioning": {
-        "source": "milestones",
+        "source": "0.0.0",
         "type": "SemVer"
       },
       "prereleaseName": "alpha",
